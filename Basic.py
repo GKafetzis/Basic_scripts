@@ -10,55 +10,51 @@ import pyspike
 import json
 
 
-
-def reorder_elements(arr,index, n):
-
+def reorder_elements(arr, index, n):
     temp = [0] * n;
 
-    for i in range(0,n):
+    for i in range(0, n):
         temp[index[i]] = arr[i]
 
     return temp
 
 
-
-def prepare_dataframes_bystring(recording: MEA_analysis.Overview.Dataframe,  bystring:str) -> pd.core.frame.DataFrame:
-
-    dataframe_stimulus= recording.stimulus_df.loc[[idx for idx, val in enumerate(recording.stimulus_df['Stimulus_name'].values) if bystring in val]]
-    dataframe_spikes= recording.spikes_df
-    dataframe_spikes= dataframe_spikes.reset_index()
-    dataframe_spikes= dataframe_spikes[np.isin(dataframe_spikes['Stimulus name'], dataframe_stimulus['Stimulus_name'])]
+def prepare_dataframes_bystring(recording: MEA_analysis.Overview.Dataframe, bystring: str) -> pd.core.frame.DataFrame:
+    dataframe_stimulus = recording.stimulus_df.loc[
+        [idx for idx, val in enumerate(recording.stimulus_df['Stimulus_name'].values) if bystring in val]]
+    dataframe_spikes = recording.spikes_df
+    dataframe_spikes = dataframe_spikes.reset_index()
+    dataframe_spikes = dataframe_spikes[np.isin(dataframe_spikes['Stimulus name'], dataframe_stimulus['Stimulus_name'])]
 
     return dataframe_spikes, dataframe_stimulus
 
 
-def prepare_dataframes(recording: MEA_analysis.Overview.Dataframe, stimuli_indices:list, cell_indices:list ==True) -> pd.core.frame.DataFrame:
+def prepare_dataframes(recording: MEA_analysis.Overview.Dataframe, stimuli_indices: list,
+                       cell_indices: list == True) -> pd.core.frame.DataFrame:
+    dataframe_stimulus = recording.stimulus_df.loc[stimuli_indices]
 
-    dataframe_stimulus= recording.stimulus_df.loc[stimuli_indices]
-
-    dataframe_spikes= recording.spikes_df
-
+    dataframe_spikes = recording.spikes_df
 
     ###THIS NEEDS TO BE USED, TODO
-    if len(cell_indices)!=0:
-        dataframe_spikes= dataframe_spikes.loc[cell_indices, :, :]
+    if len(cell_indices) != 0:
+        dataframe_spikes = dataframe_spikes.loc[cell_indices, :, :]
 
-    dataframe_spikes= dataframe_spikes.reset_index()
+    dataframe_spikes = dataframe_spikes.reset_index()
 
-    dataframe_spikes= dataframe_spikes[np.isin(dataframe_spikes['Stimulus name'], dataframe_stimulus['Stimulus_name'])]
+    dataframe_spikes = dataframe_spikes[np.isin(dataframe_spikes['Stimulus name'], dataframe_stimulus['Stimulus_name'])]
 
     return dataframe_spikes, dataframe_stimulus
 
 
-def get_stimulus_traits(dataframe_stimulus:pd.core.frame.DataFrame, stimulus_index:int) -> dict:
+def get_stimulus_traits(dataframe_stimulus: pd.core.frame.DataFrame, stimulus_index: int) -> dict:
+    stimulus_name = dataframe_stimulus['Stimulus_name'].values[stimulus_index]
+    stimulus_trig_rel = dataframe_stimulus['Trigger_Fr_relative'].values[stimulus_index]
+    stimulus_trials = int(dataframe_stimulus['Stimulus_repeat_logic'].values[stimulus_index])
+    stimulus_repeats = int(
+        (len(dataframe_stimulus['Trigger_Fr_relative'].values[stimulus_index]) - 1) / stimulus_trials)
+    stimulus_subphases = int(dataframe_stimulus['Stimulus_repeat_sublogic'].values[stimulus_index])
 
-    stimulus_name= dataframe_stimulus['Stimulus_name'].values[stimulus_index]
-    stimulus_trig_rel= dataframe_stimulus['Trigger_Fr_relative'].values[stimulus_index]
-    stimulus_trials= int(dataframe_stimulus['Stimulus_repeat_logic'].values[stimulus_index])
-    stimulus_repeats= int((len(dataframe_stimulus['Trigger_Fr_relative'].values[stimulus_index])-1)/stimulus_trials)
-    stimulus_subphases= int(dataframe_stimulus['Stimulus_repeat_sublogic'].values[stimulus_index])
-
-    stimulus_traits= {
+    stimulus_traits = {
         "stim_name": stimulus_name,
         "stim_rel_trig": stimulus_trig_rel,
         "stim_trials": stimulus_trials,
@@ -66,68 +62,81 @@ def get_stimulus_traits(dataframe_stimulus:pd.core.frame.DataFrame, stimulus_ind
         "stim_subphases": stimulus_subphases
     }
 
-
     return stimulus_traits
 
-def get_cell_index_stimulus_matching(cell:int, dataframe_spikes:pd.core.frame.DataFrame, stimulus_traits:dict) -> int:
 
-    cell_df_idx=dataframe_spikes[(dataframe_spikes['Cell index']==cell) &
-                                       (dataframe_spikes['Stimulus name']==stimulus_traits['stim_name'])].index[0]
+def get_cell_index_stimulus_matching(cell: int, dataframe_spikes: pd.core.frame.DataFrame,
+                                     stimulus_traits: dict) -> int:
+    cell_df_idx = dataframe_spikes[(dataframe_spikes['Cell index'] == cell) &
+                                   (dataframe_spikes['Stimulus name'] == stimulus_traits['stim_name'])].index[0]
 
     return cell_df_idx
 
 
-def get_cell_stimulus_spikes(cell_df_idx:int, dataframe_spikes:pd.core.frame.DataFrame) -> np.ndarray:
-
-    cell_spikes= dataframe_spikes.loc[cell_df_idx]['Spikes'].compressed()
+def get_cell_stimulus_spikes(cell_df_idx: int, dataframe_spikes: pd.core.frame.DataFrame) -> np.ndarray:
+    cell_spikes = dataframe_spikes.loc[cell_df_idx]['Spikes'].compressed()
 
     return cell_spikes
 
 
-def get_cell_spiketrains_per_stimulus(cell:int, dataframe_spikes:pd.core.frame.DataFrame, stimulus_traits:dict, phase_dur:int, sampling_freq:float) -> list:
+def get_cell_spiketrains_per_stimulus(cell: int, dataframe_spikes: pd.core.frame.DataFrame, stimulus_traits: dict,
+                                      phase_dur: int, sampling_freq: float, ) -> list:
+    spiketrains_list = []
 
-    spiketrains_list=[]
-
-    cell_df_idx= get_cell_index_stimulus_matching(cell, dataframe_spikes, stimulus_traits)
-    cell_spikes= get_cell_stimulus_spikes(cell_df_idx, dataframe_spikes)
+    cell_df_idx = get_cell_index_stimulus_matching(cell, dataframe_spikes, stimulus_traits)
+    cell_spikes = get_cell_stimulus_spikes(cell_df_idx, dataframe_spikes)
 
     for trial in range(stimulus_traits['stim_trials']):
 
+        spikes_per_trial = (sas.get_spikes_per_trigger_type_new(cell_spikes, stimulus_traits['stim_rel_trig'], trial,
+                                                                stimulus_traits['stim_trials'])[0])
 
-        spikes_per_trial= (sas.get_spikes_per_trigger_type_new(cell_spikes, stimulus_traits['stim_rel_trig'], trial, stimulus_traits['stim_trials'])[0])
-
-
-
-        spiketrain_list= []
+        spiketrain_list = []
         for repeat in range(stimulus_traits['stim_repeats']):
-            spikes_per_trial[repeat]= spikes_per_trial[repeat]/sampling_freq
-            spiketrain_list.append(pyspike.SpikeTrain(spikes_per_trial[repeat], edges=[0,phase_dur]))
+            spikes_per_trial[repeat] = spikes_per_trial[repeat] / sampling_freq
+            spiketrain_list.append(pyspike.SpikeTrain(spikes_per_trial[repeat], edges=[0, phase_dur]))
 
         spiketrains_list.append(spiketrain_list)
 
     return spiketrains_list
 
-def reorder_spiketrains(spiketrains:list, stimulus_traits:dict, pseudorder:list) -> list:
 
-    reordered_spiketrains=[]
+def kerberos_spiketrains_per_stimulus(cell: int, dataframe_spikes: pd.core.frame.DataFrame, stimulus_traits: dict,
+                                      phase_dur: int, sampling_freq: float, inhomogeneous: bool = False):
+    if inhomogeneous:
+        _, spiketrains_list = sas.get_spikes_whole_stimulus(
+            dataframe_spikes, stimulus_traits['stim_rel_trig'],
+            cell,
+            stimulus_traits['stim_trials'],
+            sampling_freq)
+    else:
+        spiketrains_list = get_cell_spiketrains_per_stimulus(cell, dataframe_spikes.reset_index(),
+                                                                   stimulus_traits, phase_dur, sampling_freq)
 
-    pseudorder_sampled= np.reshape(pseudorder, (stimulus_traits['stim_repeats'],stimulus_traits['stim_trials'])).T.flatten()
+    return spiketrains_list
 
+
+def reorder_spiketrains(spiketrains: list, stimulus_traits: dict, pseudorder: list) -> list:
+    reordered_spiketrains = []
+
+    pseudorder_sampled = np.reshape(pseudorder,
+                                    (stimulus_traits['stim_repeats'], stimulus_traits['stim_trials'])).T.flatten()
 
     flat_spiketrain = [item for sublist in spiketrains for item in sublist]
     for elem in np.unique(pseudorder_sampled):
-        reordered_spiketrains.append(list(compress(flat_spiketrain, list(map(lambda x: x==elem, pseudorder_sampled)))))
+        reordered_spiketrains.append(
+            list(compress(flat_spiketrain, list(map(lambda x: x == elem, pseudorder_sampled)))))
 
     return reordered_spiketrains
 
-def plot_raster_only_new(spiketrains, phase_dur, markersize=2):
 
+def plot_raster_only_new(spiketrains, phase_dur, markersize=2):
     raster_plot = plotly.subplots.make_subplots(
-        rows=len(spiketrains), cols=2, vertical_spacing = 0.005, shared_xaxes=True,
-    column_widths=[0.2,0.3])
+        rows=len(spiketrains), cols=2, vertical_spacing=0.005, shared_xaxes=True,
+        column_widths=[0.2, 0.3])
     # First, plot spiketrain
     for single_spiketrain in range(len(spiketrains)):
-        spiketrain=spiketrains[single_spiketrain]
+        spiketrain = spiketrains[single_spiketrain]
         for repeat in range(len(spiketrain)):
             spikes_temp = spiketrain[repeat].spikes
             nr_spikes = np.shape(spikes_temp)[0]
@@ -142,21 +151,19 @@ def plot_raster_only_new(spiketrains, phase_dur, markersize=2):
                     y=yvalue,
                     name="Repeat " + str(repeat),
                     marker=dict(color="Black", size=markersize),
-                ), 1+single_spiketrain, 1
+                ), 1 + single_spiketrain, 1
             )
 
-
-
     raster_plot.update_xaxes(range=[-0.2, phase_dur], title_text="Time in Seconds", row=len(spiketrains), col=1)
-    raster_plot.update_yaxes(range=[-0.1, len(spiketrain) +0.1],visible=False)
+    raster_plot.update_yaxes(range=[-0.1, len(spiketrain) + 0.1], visible=False)
     # raster_axis[0].set_title('Spiketrains in Recording')
     return raster_plot
 
-def plot_raster_inhomogeneous(spiketrains, phase_dur, markersize=2):
 
+def plot_raster_inhomogeneous(spiketrains, phase_dur, markersize=2):
     raster_plot = plotly.subplots.make_subplots(
-        rows=len(spiketrains), cols=2, vertical_spacing = 0.005, shared_xaxes=True,
-    column_widths=[0.7,0.1])
+        rows=len(spiketrains), cols=2, vertical_spacing=0.005, shared_xaxes=True,
+        column_widths=[0.7, 0.1])
     # First, plot spiketrain
 
     for repeat in range(len(spiketrains)):
@@ -173,171 +180,163 @@ def plot_raster_inhomogeneous(spiketrains, phase_dur, markersize=2):
                 y=yvalue,
                 name="Repeat " + str(repeat),
                 marker=dict(color="Black", size=markersize),
-            ), 1+repeat, 1
+            ), 1 + repeat, 1
         )
 
-
-
     raster_plot.update_xaxes(range=[-0.2, phase_dur], title_text="Time in Seconds", row=len(spiketrains), col=1)
-    raster_plot.update_yaxes(range=[-0.1, len(spiketrains) +0.1],visible=False)
+    raster_plot.update_yaxes(range=[-0.1, len(spiketrains) + 0.1], visible=False)
     # raster_axis[0].set_title('Spiketrains in Recording')
     return raster_plot
 
-def plot_sc_aligned_new(cell:int, spiketrains_list:list, stimulus_traits:pd.core.frame.DataFrame , phase_dur:int, colors:list) -> plotly.graph_objs._figure.Figure:
+
+def plot_sc_aligned_new(cell: int, spiketrains_list: list, stimulus_traits: pd.core.frame.DataFrame, phase_dur: int,
+                        colors: list) -> plotly.graph_objs._figure.Figure:
     """
     To do: add save option and title for stimulus that played
     """
-    #reload(spike_plotly)
+    # reload(spike_plotly)
     if 'hirp' in stimulus_traits["stim_name"]:
-        figure= plot_raster_inhomogeneous(spiketrains_list, phase_dur,)
+        figure = plot_raster_inhomogeneous(spiketrains_list, phase_dur, )
     else:
-        figure=  plot_raster_only_new(spiketrains_list, phase_dur,)
+        figure = plot_raster_only_new(spiketrains_list, phase_dur, )
 
         if 'FFF' in stimulus_traits["stim_name"]:
 
             for trial in range(stimulus_traits["stim_trials"]):
                 figure.add_shape(dict(type="rect",
-                x0=0, y0=0, x1=phase_dur/2, y1=stimulus_traits["stim_repeats"],
-                line_color=colors[trial], fillcolor=colors[trial], line_width=1,  opacity=0.2,
-            layer="below",),row=trial+1, col=1)
+                                      x0=0, y0=0, x1=phase_dur / 2, y1=stimulus_traits["stim_repeats"],
+                                      line_color=colors[trial], fillcolor=colors[trial], line_width=1, opacity=0.2,
+                                      layer="below", ), row=trial + 1, col=1)
 
             figure.for_each_xaxis(lambda x: x.update(showgrid=False))
             figure.for_each_yaxis(lambda x: x.update(showgrid=False))
 
         elif 'MB' in stimulus_traits["stim_name"]:
-            figure=update_plot_withdirections(figure)
+            figure = update_plot_withdirections(figure)
             figure.for_each_xaxis(lambda x: x.update(range=[-0.8, phase_dur]))
 
-
-
-
-
-
-
-    figure.update_layout(title='Cell %d - Stimulus %s' %(cell, stimulus_traits["stim_name"]))
+    figure.update_layout(title='Cell %d - Stimulus %s' % (cell, stimulus_traits["stim_name"]))
 
     return figure
 
-def plot_sc_aligned_new_new(dfr_mIdx:tuple, overview_dfr:pd.core.frame.DataFrame, phase_dur:int, colors:list)-> plotly.graph_objs._figure.Figure:
-    cell=dfr_mIdx[0]
-    recording_name= dfr_mIdx[2]
-    stimulus_name= overview_dfr.spikes_df.loc[dfr_mIdx]['Stimulus name']
-    spiketrains_list= overview_dfr.spikes_df.loc[dfr_mIdx]['Spiketrains']
 
+def plot_sc_aligned_new_new(dfr_mIdx: tuple, overview_dfr: pd.core.frame.DataFrame, phase_dur: int,
+                            colors: list) -> plotly.graph_objs._figure.Figure:
+    cell = dfr_mIdx[0]
+    recording_name = dfr_mIdx[2]
+    stimulus_name = overview_dfr.spikes_df.loc[dfr_mIdx]['Stimulus name']
+    spiketrains_list = overview_dfr.spikes_df.loc[dfr_mIdx]['Spiketrains']
 
-    figure=  plot_raster_only_new(spiketrains_list, phase_dur,)
+    figure = plot_raster_only_new(spiketrains_list, phase_dur, )
 
     for trial in range(len(spiketrains_list)):
         figure.add_shape(dict(type="rect",
-        x0=0, y0=0, x1=phase_dur/2, y1=len(spiketrains_list[0]),
-        line_color=colors[trial], fillcolor=colors[trial], line_width=1,  opacity=0.2,
-    layer="below",),row=trial+1, col=1)
-
-
-
+                              x0=0, y0=0, x1=phase_dur / 2, y1=len(spiketrains_list[0]),
+                              line_color=colors[trial], fillcolor=colors[trial], line_width=1, opacity=0.2,
+                              layer="below", ), row=trial + 1, col=1)
 
     figure.for_each_xaxis(lambda x: x.update(showgrid=False))
     figure.for_each_yaxis(lambda x: x.update(showgrid=False))
-    figure.update_layout(title='Cell %d - Stimulus %s - Recording %s' %(cell, stimulus_name, recording_name))
+    figure.update_layout(title='Cell %d - Stimulus %s - Recording %s' % (cell, stimulus_name, recording_name))
 
     return figure
 
-def plot_sc_aligned_new_workingon(dfr_mIdx:tuple, overview_dfr:pd.core.frame.DataFrame, phase_dur:int, colors:list, bystimulus='index', filter_val=None, )-> plotly.graph_objs._figure.Figure:
+
+def plot_sc_aligned_new_workingon(dfr_mIdx: tuple, overview_dfr: pd.core.frame.DataFrame, phase_dur: int, colors: list,
+                                  bystimulus='index', filter_val=None, ) -> plotly.graph_objs._figure.Figure:
     """
     Provide first input a tuple of cell_index & recording name
     """
-    figures=[]
+    figures = []
     assert filter_val is not None
 
-
-
     def plot_sc_aligned_byindex(dfr, stim_index):
-        stimulus_name=get_columnval_fromdfr(overview_dfr, (cell, stim_index, recording_name), 'Stimulus name')
-        spiketrains_list= get_columnval_fromdfr(overview_dfr, (cell, stim_index, recording_name), 'Spiketrains')
+        stimulus_name = get_columnval_fromdfr(overview_dfr, (cell, stim_index, recording_name), 'Stimulus name')
+        spiketrains_list = get_columnval_fromdfr(overview_dfr, (cell, stim_index, recording_name), 'Spiketrains')
 
-        if type(spiketrains_list)==float:
-            print('No spiketrains found for %d %s . Please ensure you have computed them'%(stim_index, stimulus_name))
-            figure=np.nan
+        if type(spiketrains_list) == float:
+            print('No spiketrains found for %d %s . Please ensure you have computed them' % (stim_index, stimulus_name))
+            figure = np.nan
         else:
-            figure= plotting_aligned(spiketrains_list, phase_dur, colors)
-            figure.update_layout(title='Cell %d - Stimulus %s - Recording %s' %(cell, stimulus_name, recording_name))
+            figure = plotting_aligned(spiketrains_list, phase_dur, colors)
+            figure.update_layout(title='Cell %d - Stimulus %s - Recording %s' % (cell, stimulus_name, recording_name))
             figure.show()
 
         return figure
 
-
-    cell=dfr_mIdx[0]
-    recording_name= dfr_mIdx[1]
-    if bystimulus=='index':
+    cell = dfr_mIdx[0]
+    recording_name = dfr_mIdx[1]
+    if bystimulus == 'index':
         print('Stimulus index expected as a list')
         for stim_index in filter_val:
-            figure=plot_sc_aligned_byindex(overview_dfr, stim_index)
+            figure = plot_sc_aligned_byindex(overview_dfr, stim_index)
             figures.append(figure)
-    elif bystimulus=='name':
+    elif bystimulus == 'name':
         print('Stimulus names expected as a list')
-        #for stim_name in filter_val:
-        dfr_temp=overview_dfr
-        #dfr_temp= overview_dfr.get_stimulus_subset(name=stim_name)[0]
+        # for stim_name in filter_val:
+        dfr_temp = overview_dfr
+        # dfr_temp= overview_dfr.get_stimulus_subset(name=stim_name)[0]
         for stim_index in np.unique(dfr_temp.index.get_level_values(level=1)):
-            figure=plot_sc_aligned_byindex(dfr_temp, stim_index)
+            figure = plot_sc_aligned_byindex(dfr_temp, stim_index)
             figures.append(figure)
 
     return figures
 
-def plotting_aligned(spiketrains_list, phase_dur, colors):
 
-    figure=  plot_raster_only_new(spiketrains_list, phase_dur,)
+def plotting_aligned(spiketrains_list, phase_dur, colors):
+    figure = plot_raster_only_new(spiketrains_list, phase_dur, )
 
     for trial in range(len(spiketrains_list)):
         figure.add_shape(dict(type="rect",
-        x0=0, y0=0, x1=phase_dur/2, y1=len(spiketrains_list[0]),
-        line_color=colors[trial], fillcolor=colors[trial], line_width=1,  opacity=0.2,
-    layer="below",),row=trial+1, col=1)
-
-
-
+                              x0=0, y0=0, x1=phase_dur / 2, y1=len(spiketrains_list[0]),
+                              line_color=colors[trial], fillcolor=colors[trial], line_width=1, opacity=0.2,
+                              layer="below", ), row=trial + 1, col=1)
 
     figure.for_each_xaxis(lambda x: x.update(showgrid=False))
     figure.for_each_yaxis(lambda x: x.update(showgrid=False))
 
     return figure
-def get_columnval_fromdfr(dfr, mIdx:tuple, col_name:'str'):
+
+
+def get_columnval_fromdfr(dfr, mIdx: tuple, col_name: 'str'):
     return dfr.loc[mIdx][col_name]
 
 
-def plot_c_spiketrain_per_stimulus_new(cell_idx:int, arrays_select:list, df_spikes:pd.core.frame.DataFrame, df_stimulus:pd.core.frame.DataFrame,
-                                   phase_dur:int, sampling_freq:float, colors_box:list, toappend:bool) ->plotly.graph_objs._figure.Figure:
+def plot_c_spiketrain_per_stimulus_new(cell_idx: int, arrays_select: list, df_spikes: pd.core.frame.DataFrame,
+                                       df_stimulus: pd.core.frame.DataFrame,
+                                       phase_dur: int, sampling_freq: float, colors_box: list,
+                                       toappend: bool) -> plotly.graph_objs._figure.Figure:
     """
     TODO: add functionalities for other stimuli, e.g. MB
     """
-    figure=[]
+    figure = []
     for stimulus in range(len(df_stimulus)):
         stimulus_traits = get_stimulus_traits(df_stimulus, stimulus)
 
-        #if 'BW' in stimulus_traits['stim_name']:
-           # stimulus_traits['stim_trials']= 1
-            #stimulus_traits['stim_repeats']= 2*stimulus_traits['stim_repeats']
-            #colors_box=['#FFFFFF']
+        # if 'BW' in stimulus_traits['stim_name']:
+        # stimulus_traits['stim_trials']= 1
+        # stimulus_traits['stim_repeats']= 2*stimulus_traits['stim_repeats']
+        # colors_box=['#FFFFFF']
         if 'green' in stimulus_traits['stim_name']:
-            colors_box=['#052c00','#0c6701', '#8afe7c', '#12a101', '#0e7a01', '#052c00']
+            colors_box = ['#052c00', '#0c6701', '#8afe7c', '#12a101', '#0e7a01', '#052c00']
         else:
-            colors_box=['#fe7c7c', '#fafe7c', '#8afe7c', '#7cfcfe', '#7c86fe', '#fe7cfe']
+            colors_box = ['#fe7c7c', '#fafe7c', '#8afe7c', '#7cfcfe', '#7c86fe', '#fe7cfe']
 
-        spiketrains_list= get_cell_spiketrains_per_stimulus(cell_idx, df_spikes, stimulus_traits, phase_dur, sampling_freq)
+        spiketrains_list = get_cell_spiketrains_per_stimulus(cell_idx, df_spikes, stimulus_traits, phase_dur,
+                                                             sampling_freq)
 
         if 'pseudo' in stimulus_traits['stim_name']:
-            spiketrains_list= reorder_spiketrains(spiketrains_list, pseudorder)
+            spiketrains_list = reorder_spiketrains(spiketrains_list, pseudorder)
         else:
             pass
 
-
-
         if '4' in stimulus_traits['stim_name']:
-            fig= plot_sc_aligned(cell_idx, spiketrains_list, stimulus_traits, 2*phase_dur, stimulus_traits['stim_repeats'], colors_box)
+            fig = plot_sc_aligned(cell_idx, spiketrains_list, stimulus_traits, 2 * phase_dur,
+                                  stimulus_traits['stim_repeats'], colors_box)
         else:
-            fig= plot_sc_aligned_new(cell_idx, spiketrains_list, stimulus_traits, phase_dur, stimulus_traits['stim_repeats'], colors_box)
+            fig = plot_sc_aligned_new(cell_idx, spiketrains_list, stimulus_traits, phase_dur,
+                                      stimulus_traits['stim_repeats'], colors_box)
         fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', showlegend=False)
-
 
         fig.show()
 
@@ -346,25 +345,28 @@ def plot_c_spiketrain_per_stimulus_new(cell_idx:int, arrays_select:list, df_spik
 
     return figure
 
+
 def create_RGCtypes():
-    RGC_categories=['ON', 'OFF', 'ONOFF','unclear']
-    ONs=[]
-    OFFs=[]
-    ONOFFs=[]
-    unclears=[]
-    RGCtypes=[ONs, OFFs, ONOFFs, unclears]
+    RGC_categories = ['ON', 'OFF', 'ONOFF', 'unclear']
+    ONs = []
+    OFFs = []
+    ONOFFs = []
+    unclears = []
+    RGCtypes = [ONs, OFFs, ONOFFs, unclears]
 
     return RGCtypes
+
 
 def f(cell, save):
     if 'RGCtypes' not in globals():
         create_RGCtypes()
     else:
         pass
-    def y(On, Off, OnOff, ONOFFswitch, unclear):
-        alignment=[On, Off, OnOff, ONOFFswitch, unclear]
 
-        if len(np.where(alignment)[0])!=0:
+    def y(On, Off, OnOff, ONOFFswitch, unclear):
+        alignment = [On, Off, OnOff, ONOFFswitch, unclear]
+
+        if len(np.where(alignment)[0]) != 0:
             if int(cell) in RGCtypes[np.where(alignment)[0][0]]:
                 print('You have previously classified this cell')
             else:
@@ -374,178 +376,178 @@ def f(cell, save):
         else:
             print('Cell is not classified yet')
 
-    interact(y, On=False, Off=False, OnOff=False, ONOFFswitch=False, unclear=False,)
+    interact(y, On=False, Off=False, OnOff=False, ONOFFswitch=False, unclear=False, )
 
-    figure=plot_c_spiketrain_per_stimulus_new(int(cell), arrays_selectmg2, df_spikes, df_stimulus,
-                                   4, Sampling_freq, colors, toappend=save)
+    figure = plot_c_spiketrain_per_stimulus_new(int(cell), arrays_selectmg2, df_spikes, df_stimulus,
+                                                4, Sampling_freq, colors, toappend=save)
 
     if save:
-        for i in  range(len(figure)):
+        for i in range(len(figure)):
+            figure[i].write_image("poster_figures/forTom/%s.svg" % figure[i].layout['title']['text'], width=900,
+                                  height=600, scale=4)
 
-            figure[i].write_image("poster_figures/forTom/%s.svg" %figure[i].layout['title']['text'], width=900, height=600, scale=4 )
 
 def run_interact(cell_array):
-    return interact(f, save=False,  cell=[str(i)for i in arrays_selectmg2],)
+    return interact(f, save=False, cell=[str(i) for i in arrays_selectmg2], )
 
 
 def create_RGC_dictionary(RGC_categories, RGCtypes):
-    return(dict([[RGC_categories[i], RGCtypes[i]] for i in range(len(RGCtypes))]))
+    return (dict([[RGC_categories[i], RGCtypes[i]] for i in range(len(RGCtypes))]))
 
-def save_RGC_dictionary(RGC_dict:dict, savename:str):
 
-    lesn=0
+def save_RGC_dictionary(RGC_dict: dict, savename: str):
+    lesn = 0
     for i in range(len(RGCtypes)):
-        lesn+=len(RGCtypes[i])
-    RGC_dict['tnumber']=lesn
+        lesn += len(RGCtypes[i])
+    RGC_dict['tnumber'] = lesn
 
-    with open(savename+'.json', 'w') as outfile:
+    with open(savename + '.json', 'w') as outfile:
         outfile.write(json.dumps(RGC_dict))
 
     print('Saving was successful')
 
-def open_RGC_dictionary(data_directory:str,):
+
+def open_RGC_dictionary(data_directory: str, ):
     with open(data_directory) as json_file:
         data_categ = json.load(json_file)
 
     return data_categ
 
-def flatten_RGC_types(RGC_dict:dict)->list:
+
+def flatten_RGC_types(RGC_dict: dict) -> list:
     print('flattened_array and individual bounds are returned')
-    full_array= [RGC_dict['ON'], RGC_dict['OFF'], RGC_dict['ONOFF']]
+    full_array = [RGC_dict['ON'], RGC_dict['OFF'], RGC_dict['ONOFF']]
     full_array = [item for sublist in full_array for item in sublist]
 
-    ON_bounds= slice(0,len(RGC_dict['ON']))
-    OFF_bounds= slice(ON_bounds.stop, ON_bounds.stop+len(RGC_dict['OFF']))
-    ONOFF_bounds= slice(OFF_bounds.stop,len(full_array))
-    bounds=[ON_bounds, OFF_bounds, ONOFF_bounds]
+    ON_bounds = slice(0, len(RGC_dict['ON']))
+    OFF_bounds = slice(ON_bounds.stop, ON_bounds.stop + len(RGC_dict['OFF']))
+    ONOFF_bounds = slice(OFF_bounds.stop, len(full_array))
+    bounds = [ON_bounds, OFF_bounds, ONOFF_bounds]
 
     return full_array, bounds
 
+
 #################################################################################################
-def helper_filter(val, x, sign='smaller',):
-    if sign=='smaller':
-        return val<x
-    elif sign=='bigger':
-        return val>x
+def helper_filter(val, x, sign='smaller', ):
+    if sign == 'smaller':
+        return val < x
+    elif sign == 'bigger':
+        return val > x
+
 
 def calculate_PSI(x):
     """
     Calculates skew index
     """
-    return 3*(np.nanmean(x)-np.nanmedian(x))/np.nanstd(x)
+    return 3 * (np.nanmean(x) - np.nanmedian(x)) / np.nanstd(x)
 
-def calculate_inwindow(x, bounds:list):
-    return sum((x>bounds[0])&(x<bounds[1]))/len(x)
+
+def calculate_inwindow(x, bounds: list):
+    return sum((x > bounds[0]) & (x < bounds[1])) / len(x)
+
 
 def proceed(f, args):
-    val=input('Do you wish to proceed with defaults? (yes/no)')
-    if val=='yes':
+    val = input('Do you wish to proceed with defaults? (yes/no)')
+    if val == 'yes':
         return f(*args)
     else:
         print('stopping here, back to user')
         return None
 
-def create_color_book(lob:list, colours:list):
-    assert len(lob)==len(colours)
-    color_book=[]
+
+def create_color_book(lob: list, colours: list):
+    assert len(lob) == len(colours)
+    color_book = []
     for idx, l in enumerate(lob):
-        color_book.append((l.stop-l.start)*[colours[idx]])
+        color_book.append((l.stop - l.start) * [colours[idx]])
 
     return [item for sublist in color_book for item in sublist]
 
 
 def update_plot_withdirections(plot_handle):
     plot_handle['layout'].update(
-    annotations=[
-    dict(
-        x= -0.01, y=1.5, # annotation point
-        xref='x1',
-        yref='y1',
-        showarrow=True,
-        arrowhead=3,
-        ax= -25,
-        ay= 0.4,
-    ),
+        annotations=[
+            dict(
+                x=-0.01, y=1.5,  # annotation point
+                xref='x1',
+                yref='y1',
+                showarrow=True,
+                arrowhead=3,
+                ax=-25,
+                ay=0.4,
+            ),
 
-    dict(
-        x= -0.012, y=3, # annotation point
-        xref='x1',
-        yref='y3',
-        showarrow=True,
-        arrowhead=3,
-        ax= -20,
-        ay= 12.54,
-    ),
+            dict(
+                x=-0.012, y=3,  # annotation point
+                xref='x1',
+                yref='y3',
+                showarrow=True,
+                arrowhead=3,
+                ax=-20,
+                ay=12.54,
+            ),
 
+            dict(
+                x=-0.35, y=3.5,  # annotation point
+                xref='x1',
+                yref='y5',
+                showarrow=True,
+                arrowhead=3,
+                ax=0,
+                ay=30,
+            ),
 
-    dict(
-        x= -0.35, y=3.5, # annotation point
-        xref='x1',
-        yref='y5',
-        showarrow=True,
-        arrowhead=3,
-        ax= 0,
-        ay= 30,
-    ),
+            dict(
+                x=-0.69, y=3,  # annotation point
+                xref='x1',
+                yref='y7',
+                showarrow=True,
+                arrowhead=3,
+                ax=20,
+                ay=12.54,
+            ),
 
+            dict(
+                x=-0.68, y=1.5,  # annotation point
+                xref='x1',
+                yref='y9',
+                showarrow=True,
+                arrowhead=3,
+                ax=25,
+                ay=0,
+            ),
+            dict(
+                x=-0.68, y=0,  # annotation point
+                xref='x1',
+                yref='y11',
+                showarrow=True,
+                arrowhead=3,
+                ax=25,
+                ay=-12.54,
+            ),
 
-    dict(
-        x= -0.69, y=3, # annotation point
-        xref='x1',
-        yref='y7',
-        showarrow=True,
-        arrowhead=3,
-        ax= 20,
-        ay= 12.54,
-    ),
+            dict(
+                x=-0.35, y=0,  # annotation point
+                xref='x1',
+                yref='y13',
+                showarrow=True,
+                arrowhead=3,
+                ax=0,
+                ay=-30,
+            ),
 
-    dict(
-        x= -0.68, y=1.5, # annotation point
-        xref='x1',
-        yref='y9',
-        showarrow=True,
-        arrowhead=3,
-        ax= 25,
-        ay= 0,
-    ),
-    dict(
-        x= -0.68, y=0, # annotation point
-        xref='x1',
-        yref='y11',
-        showarrow=True,
-        arrowhead=3,
-        ax= 25,
-        ay= -12.54,
-    ),
-
-
-    dict(
-        x= -0.35, y=0, # annotation point
-        xref='x1',
-        yref='y13',
-        showarrow=True,
-        arrowhead=3,
-        ax= 0,
-        ay= -30,
-    ),
-
-
-    dict(
-        x= -0.01, y=0.4, # annotation point
-        xref='x1',
-        yref='y15',
-        showarrow=True,
-        arrowhead=3,
-        ax= -25,
-        ay= -15,
-    ),
-    ])
+            dict(
+                x=-0.01, y=0.4,  # annotation point
+                xref='x1',
+                yref='y15',
+                showarrow=True,
+                arrowhead=3,
+                ax=-25,
+                ay=-15,
+            ),
+        ])
 
     plot_handle.for_each_xaxis(lambda x: x.update(showgrid=False))
     plot_handle.for_each_yaxis(lambda x: x.update(showgrid=False))
-
-
-
-
 
     return (plot_handle)
