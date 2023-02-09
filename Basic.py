@@ -190,7 +190,7 @@ def plot_raster_inhomogeneous(spiketrains, phase_dur, markersize=2):
 
 
 def plot_sc_aligned_new(cell: int, spiketrains_list: list, stimulus_traits: pd.core.frame.DataFrame, phase_dur: int,
-                        colors: list) -> plotly.graph_objs._figure.Figure:
+                        colors: list=['#FE7C7C', '#FAFE7C', '#8AFE7C', '#7CFCFE', '#7C86FE', '#FE7CFE']) -> plotly.graph_objs._figure.Figure:
     """
     To do: add save option and title for stimulus that played
     """
