@@ -130,6 +130,8 @@ def reorder_spiketrains(spiketrains: list, stimulus_traits: dict, pseudorder: li
     return reordered_spiketrains
 
 
+
+
 def plot_raster_only_new(spiketrains, phase_dur, markersize=2):
     raster_plot = plotly.subplots.make_subplots(
         rows=len(spiketrains), cols=2, vertical_spacing=0.005, shared_xaxes=True,
