@@ -265,7 +265,7 @@ def plot_qc_locations_newqi(spikes, savename, invert=False, inverty=False, save=
                 height=1000,
                 width=1000,
                 showlegend=False,
-                title_text="Cell locations on Chip",
+                title_text="Cell locations on Chip - N of cells: %d" %len(spikes),
 
             )
 
@@ -274,12 +274,19 @@ def plot_qc_locations_newqi(spikes, savename, invert=False, inverty=False, save=
             #                scaleratio = 1,
             #                )
     if save == True:
-        qc_locations_plt.write_image("%s.svg" % savename, width=1000, height=1000, scale=1)
+        qc_locations_plt.write_image("%s.pdf" % savename, width=1000, height=1000,)
     return qc_locations_plt
 
 
-def chip_image(threshold_old, threshold_new, spikes, stim_name, case='inclusive', save_name='Random', tosave=False):
+def chip_image(threshold_old, threshold_new, spikes, stim_name, fill_na=True, case='inclusive', save_name='Random', tosave=False):
+    """
+    Options for case: inclusive, end_inspection, end_exclusive, end_agreement
+    """
     spikes_filtered = spikes.xs(stim_name, level='Stimulus name')
+    if fill_na:
+        print('On it')
+        spikes_filtered= spikes_filtered.fillna({'New_qi': 0})
+
     if case == 'inclusive':
         spikes_thres = spikes_filtered[
             (spikes_filtered['total qc new'] > threshold_old) | (spikes_filtered['New_qi'] > threshold_new)]
