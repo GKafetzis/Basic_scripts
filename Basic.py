@@ -9,6 +9,8 @@ import pandas as pd
 import pyspike
 import json
 
+import itertools
+
 
 def reorder_elements(arr, index, n):
     temp = [0] * n;
@@ -46,20 +48,26 @@ def prepare_dataframes(recording: MEA_analysis.Overview.Dataframe, stimuli_indic
     return dataframe_spikes, dataframe_stimulus
 
 
-def get_stimulus_traits(dataframe_stimulus: pd.core.frame.DataFrame, stimulus_index: int) -> dict:
+def get_stimulus_traits(dataframe_stimulus: pd.core.frame.DataFrame, stimulus_index: int, sampling_freq=None) -> dict:
+    #TO-DO: Maybe include here whether stimulus is homogeneous or not by comparing the phase_dur intervals within repeat
     stimulus_name = dataframe_stimulus['Stimulus_name'].values[stimulus_index]
     stimulus_trig_rel = dataframe_stimulus['Trigger_Fr_relative'].values[stimulus_index]
     stimulus_trials = int(dataframe_stimulus['Stimulus_repeat_logic'].values[stimulus_index])
     stimulus_repeats = int(
         (len(dataframe_stimulus['Trigger_Fr_relative'].values[stimulus_index]) - 1) / stimulus_trials)
     stimulus_subphases = int(dataframe_stimulus['Stimulus_repeat_sublogic'].values[stimulus_index])
+    if not sampling_freq:
+        sampling_freq=17852.767845719834
 
+    stimulus_phase_dur= int(np.round((stimulus_trig_rel[1]- stimulus_trig_rel[0])/sampling_freq,0))
     stimulus_traits = {
         "stim_name": stimulus_name,
         "stim_rel_trig": stimulus_trig_rel,
         "stim_trials": stimulus_trials,
         "stim_repeats": stimulus_repeats,
-        "stim_subphases": stimulus_subphases
+        "stim_subphases": stimulus_subphases,
+        "stim_phase_dur": stimulus_phase_dur,
+        "sampling_freq": sampling_freq
     }
 
     return stimulus_traits
@@ -103,6 +111,9 @@ def get_cell_spiketrains_per_stimulus(cell: int, dataframe_spikes: pd.core.frame
 
 def kerberos_spiketrains_per_stimulus(cell: int, dataframe_spikes: pd.core.frame.DataFrame, stimulus_traits: dict,
                                       phase_dur: int, sampling_freq: float, inhomogeneous: bool = False):
+
+    ###TO-DO: Consider estimating if function is homogeneous by comparing windows of phase_dur
+
     if inhomogeneous:
         _, spiketrains_list = sas.get_spikes_whole_stimulus(
             dataframe_spikes, stimulus_traits['stim_rel_trig'],
@@ -347,6 +358,151 @@ def plot_c_spiketrain_per_stimulus_new(cell_idx: int, arrays_select: list, df_sp
 
     return figure
 
+def calculate_psth_trace(spikes_df, to_normalise=False, normalising_array=None):
+
+    histogram_column = spikes_df.loc[:, "PSTH"]
+    histograms = histogram_column.values
+    histogram_arr = np.zeros((len(spikes_df), np.shape(histograms[0])[0]))
+    bins_column = spikes_df.loc[:, "PSTH_x"]
+    bins = bins_column.values
+    bins_x = bins[0]
+    nr_cells = np.shape(histograms)[0]
+    cell_indices = np.linspace(0, nr_cells - 1, nr_cells)
+
+
+
+    for cell in range(nr_cells):
+        if np.max(histograms[cell]) == 0:
+            histogram_arr[cell, :] = 0
+        else:
+            try:
+                histogram_arr[cell, :] = histograms[cell] / np.max(histograms[cell]) if not to_normalise else histograms[cell]/ normalising_array[cell]
+            except ValueError:
+                extra_bins = np.shape(histograms[cell])[0] - np.shape(histogram_arr)[0]
+                histogram_arr_temp = histograms[cell] / np.max(histograms[cell])
+                try:
+                    histogram_arr[cell, :] = histogram_arr_temp[:-extra_bins]
+                except ValueError:
+                    histogram_arr[cell, :] = 0
+
+    return bins_x, histogram_arr
+
+def plot_heatmap_adj(spike_df, stimulus_df, stimulus_index:int, mid_dim: int = 1.2, to_normalise=False, normalising_array=None,
+                     scale_to=None, save=False, savename=None):
+    """
+    spikes_df needs to include PSTH and PSTH_x values
+    TO-DO: implement normalisation of spikes across different stimuli for same cell.
+    """
+    stimulus_traits=get_stimulus_traits(stimulus_df, stimulus_index)
+    stimulus_trace= xyplot_stim_steps(stimulus_traits["stim_trials"], stimulus_traits["stim_phase_dur"], yrange=[0.98, 1.08])
+    stimulus_trace=[stimulus_trace[0][:-1], stimulus_trace[1]]
+
+    spikes_df= spike_df.loc[slice(None),["Stimulus ID", stimulus_index], :]
+
+    bins, histogram_arr= calculate_psth_trace(spikes_df, to_normalise, normalising_array)
+    cell_indices = np.linspace(0, len(spikes_df) - 1, len(spikes_df))
+
+
+    histogram_fig = plotly.subplots.make_subplots(
+        rows=3,
+        cols=1,
+        row_width=[0.2, mid_dim, 0.4],
+        vertical_spacing=0.01,
+        shared_xaxes=True,
+    )
+    histogram_fig.add_trace(
+        go.Scatter(
+            x=bins,
+            y=(np.mean(histogram_arr, axis=0)/np.max(np.mean(histogram_arr, axis=0)))*len(spikes_df),
+            # y=val_scaled_rel(np.mean(histogram_arr, axis=0), traces[1]),
+            mode="lines",
+            name="Average PSTH",
+            line=dict(color="#000000"),
+
+        ),
+        row=1,
+        col=1,
+    )
+
+    histogram_fig.add_trace(
+        go.Heatmap(
+            x=bins,
+            y=cell_indices,
+            z=histogram_arr,
+            zsmooth=False,
+            colorscale=[
+                [0, "rgb(255, 255, 255)"],  # 0
+                [0.1, "rgb(200, 200, 200)"],  # 10
+                [0.2, "rgb(170, 170, 170)"],  # 100
+                [0.3, "rgb(150, 150, 150)"],
+                [0.4, "rgb(100, 100, 100)"],
+                [0.5, "rgb(100, 100, 100)"],  # 1000
+                [0.6, "rgb(50, 50, 50)"],
+                [0.7, "rgb(50, 50, 50)"],
+                [0.8, "rgb(5, 5, 5)"],
+                [0.9, "rgb(5, 5, 5)"],  # 10000
+                [1.0, "rgb(0, 0, 0)"],  # 100000
+            ], colorbar=dict(bgcolor='white', bordercolor='white'),
+        ),
+        row=2,
+        col=1,
+    )
+    histogram_fig.update_traces(showscale=False, selector=dict(type="heatmap"), row=2, col=1)
+
+
+    histogram_fig.add_trace(
+            go.Scatter(x=stimulus_trace[0], y=stimulus_trace[1], mode="lines", marker_color='black'),
+            row=3,
+            col=1,
+    )
+
+    if stimulus_traits["stim_name"] == 'FFF':
+        ##TO-DO: Create a separate function, where the templates will be stored, so you can include arbitrary colors
+
+        colors: list = ['#FE7C7C', '#FAFE7C', '#8AFE7C', '#7CFCFE', '#7C86FE', '#FE7CFE']
+
+        for trial in range(stimulus_traits["stim_trials"]):
+            histogram_fig.add_shape(dict(type="rect",
+                               x0=0 + (trial * stimulus_traits["stim_phase_dur"]),
+                               y0=-0.5,
+                               x1=stimulus_traits["stim_phase_dur"] / stimulus_traits["stim_subphases"]+
+                                  (trial * stimulus_traits["stim_phase_dur"]),
+                               y1=len(spikes_df)-0.5,
+                               line_color=colors[trial], fillcolor=colors[trial], line_width=1, opacity=0.2,
+                               ), row=2, col=1)
+
+    if scale_to is None:
+        y_range=[-.1, len(spikes_df)+0.8]
+    else:
+        y_range=[-.1, len(scale_to)+0.8]
+
+    histogram_fig.update_xaxes(showticklabels=False, row=1, col=1)
+    histogram_fig.update_yaxes(showticklabels=False, row=3, col=1)
+    histogram_fig.update_yaxes(range=y_range, showticklabels=False, row=1, col=1)
+    histogram_fig.update_xaxes(showticklabels=False, row=2, col=1)
+    histogram_fig.update_yaxes(range=y_range, showticklabels=False, row=2, col=1)
+    histogram_fig.update_xaxes(title_text="Time in Seconds", row=3, col=1)
+
+    histogram_fig.update_layout( {"plot_bgcolor": "rgba(0, 0, 0, 0)"},
+                                 height=1080,
+                                 width=1980,
+                                 showlegend=False)
+
+
+    if save == True:
+        histogram_fig.write_image("%s.pdf" % savename, width=1980*2, height=1080*2,)
+
+    return histogram_fig
+
+
+def xyplot_stim_steps(ntrials: int, phase_dur: int, yrange: list) -> list:
+    ys = [yrange[0], yrange[1], yrange[1], yrange[0]] * (ntrials + 1)
+    x_template = np.arange(phase_dur * ntrials + 2)[::int(phase_dur / 2)]
+    k = 2
+    listOfLists = [list(itertools.repeat(element, k)) for element in x_template]
+    xs = list(itertools.chain.from_iterable(listOfLists))
+
+    return xs, ys
 
 def create_RGCtypes():
     RGC_categories = ['ON', 'OFF', 'ONOFF', 'unclear']
