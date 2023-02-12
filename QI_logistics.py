@@ -284,7 +284,6 @@ def chip_image(threshold_old, threshold_new, spikes, stim_name, fill_na=True, ca
     """
     spikes_filtered = spikes.xs(stim_name, level='Stimulus name')
     if fill_na:
-        print('On it')
         spikes_filtered= spikes_filtered.fillna({'New_qi': 0})
 
     if case == 'inclusive':
@@ -293,9 +292,22 @@ def chip_image(threshold_old, threshold_new, spikes, stim_name, fill_na=True, ca
         spikes_thres['previously_included'] = spikes_thres['total qc new'] > threshold_old
     elif case == 'end_inspection':
         spikes_thres = spikes_filtered[
-            (spikes_filtered['total qc new'] > threshold_old) | (spikes_filtered['New_qi'] > threshold_new)]
+            spikes_filtered['New_qi'] > threshold_new]
         spikes_thres['previously_included'] = (spikes_filtered['total qc new'] > threshold_old) & (
                     spikes_filtered['New_qi'] > threshold_new)
+    elif case == 'end_clean':
+        spikes_thres = spikes_filtered[
+            spikes_filtered['New_qi'] > threshold_new]
+        spikes_thres['previously_included'] = [True]*len(spikes_thres)
+    elif case == 'only_old':
+        spikes_thres = spikes_filtered[
+            spikes_filtered['total qc new'] > threshold_old]
+        spikes_thres['previously_included'] = (spikes_filtered['total qc new'] > threshold_old)
+    elif case == 'only_new':
+        spikes_thres = spikes_filtered[
+            (spikes_filtered['New_qi'] > threshold_new) & (spikes_filtered['total qc new'] < threshold_old)]
+        spikes_thres['previously_included'] =  (spikes_filtered['New_qi'] > threshold_new)
+
     elif case == 'end_exclusive':
         spikes_thres = spikes_filtered[
             (spikes_filtered['total qc new'] > threshold_old) & (spikes_filtered['New_qi'] < threshold_new)]
@@ -305,5 +317,7 @@ def chip_image(threshold_old, threshold_new, spikes, stim_name, fill_na=True, ca
             (spikes_filtered['total qc new'] > threshold_old) & (spikes_filtered['New_qi'] > threshold_new)]
         spikes_thres['previously_included'] = spikes_thres['total qc new'] > threshold_old
 
-    return plot_qc_locations_newqi(spikes_thres.reset_index(), savename=save_name + "" + stim_name, invert=True,
+
+
+    return spikes_thres, plot_qc_locations_newqi(spikes_thres.reset_index(), savename=save_name + "" + stim_name, invert=True,
                                    inverty=True, save=tosave)
