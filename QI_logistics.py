@@ -8,8 +8,15 @@ import scipy.signal as signal
 import pandas as pd
 import plotly.express as px
 
-
+#TODO Allow calculate_qi for some stimuli in dataframe, currently all
 def kernel_template(width=0.01, sampling_freq=17852.767845719834):
+    """
+    create Gaussian kernel by providing the width (FWHM) value. According to wiki, this is approx. 2.355*std of dist.
+    width=given in seconds, converted internally in sampling points.
+
+    Returns
+    Gaussian kernel
+    """
     fwhm = int((sampling_freq) * width)  # in points
 
     # normalized time vector in ms
@@ -25,6 +32,9 @@ def kernel_template(width=0.01, sampling_freq=17852.767845719834):
 
 
 def spike_padding(spikes, trial_n, sampling_freq=17852.767845719834):
+    """
+    Deprecated, please do not use
+    """
     stim_time = np.zeros(len(np.linspace(0, int(4.05 * 6 * sampling_freq),
                                          num=int(4.05 * 6 * sampling_freq), endpoint=False)))
 
@@ -35,15 +45,36 @@ def spike_padding(spikes, trial_n, sampling_freq=17852.767845719834):
 
 
 def spike_padding_new(stim_time, spikes, trial_n):
+    """
+    Takes a stim_time window (array of zeros), and populates it with 1 at each index a spike happened. Trial_specific.
+
+    Returns
+    The 0-and-1s stim_time window
+    """
     stim_time[trial_n][list(spikes[trial_n].astype(int))] = 1
     return stim_time
 
 
 def calc_tradqi(kernelfits):
+    """
+    Calculates the Quality_index of the (Gaussian-kernel) fitted spike data. Cell-specific and stimulus-specific,
+    but of nr-of-trials length
+
+    Returns
+    The QI value for the cells-response to this stimulus
+    """
     return np.var(np.mean(kernelfits, 0)) / np.mean(np.var(kernelfits, 0))
 
 
-def fast_qi(spikes, stimulus_traits, repeat_duration, sampling_freq=17852.767845719834):
+def fast_qi(spikes, stimulus_traits, repeat_duration, kernel_width, sampling_freq=17852.767845719834):
+    """
+    Faster implementation to the actual convolution of the spikes stim_time with a Gaussian window, BUT only for few
+    spikes. Works by fitting hats around the location of each spike, and deals with border cases (where the hat does not
+    fit either at the beginning or end of trial) by adding part of the hat.
+    Alternative to this function is the fast_qi_exclusive, where these spikes are omitted from further consideration.
+    """
+
+    gauswin = kernel_template(width=kernel_width)
     exs = np.zeros((stimulus_traits['stim_repeats'], int(sampling_freq) * int(repeat_duration)))
     for trial in range(len(spikes)):
         a = np.zeros((len(spikes[trial]), int(sampling_freq) * int(repeat_duration)))
@@ -70,6 +101,9 @@ def fast_qi(spikes, stimulus_traits, repeat_duration, sampling_freq=17852.767845
 
 
 def fast_qi_exclusive_old(spikes, stimulus_traits, repeat_duration, sampling_freq=17852.767845719834):
+    """
+    Deprecated, please do not use
+    """
     exs = np.zeros((stimulus_traits['stim_repeats'], int(sampling_freq) * int(repeat_duration)))
     for trial in range(len(spikes)):
         a = np.zeros((len(spikes[trial]), int(sampling_freq) * int(repeat_duration)))
@@ -86,6 +120,13 @@ def fast_qi_exclusive_old(spikes, stimulus_traits, repeat_duration, sampling_fre
 
 
 def fast_qi_exclusive(spikes, stimulus_traits, kernel_width,):
+    """
+    Faster implementation to the actual convolution of the spikes stim_time with a Gaussian window, BUT only for few
+    spikes. Works by fitting hats around the location of each spike, and deals with border cases (where the hat does not
+    fit either at the beginning or end of trial) by omitting them from further consideration.
+    Alternative to this function is the fast_qi, where these spikes are fitted with partial hats.
+    """
+
     gauswin = kernel_template(width=kernel_width)
 
     exs = np.zeros(
@@ -106,6 +147,10 @@ def fast_qi_exclusive(spikes, stimulus_traits, kernel_width,):
     return calc_tradqi(exs)
 
 def create_full_logbook(stimulus_df):
+    """
+    Either queries or computes useful stimulus-specific properties and stores them in separate lists.
+    Currently to be used exclusively with 'calculate_qi' function, need to think of further uses.
+    """
     nr_stimuli = stimulus_df.index.unique()
     sampling_freq = 17852.767845719834
     trigger_completes = [stimulus_df.loc[i][
@@ -126,7 +171,15 @@ def create_full_logbook(stimulus_df):
 
     return sampling_freq, trigger_completes, repeat_logics, repeats, repeat_durations
 
-def calculate_qi(stimulus_df, spikes_df, kernel_width=0.0125):
+def calculate_qi(stimulus_df, spikes_df, nspikes_thres=30, kernel_width=0.0125):
+
+    """
+    The main function. Given a FULL stimulus_df(i.e. qi to be computed for ALL stimuli), it calculates the QI value with
+    the Gaussian kernel implementation, and returns the spikes_df with a 'New_qi' column storing the computed values.
+
+    nspikes_thres: Sets the cell-specific threshold of averages spikes per trial, and determines whether we will proceed
+    to the computation of the qi by gaussian convolution or by hat fitting
+    """
     ####cell_idces currently not part of the script
     qi_per_cell = np.zeros(len(spikes_df))
 
@@ -155,7 +208,7 @@ def calculate_qi(stimulus_df, spikes_df, kernel_width=0.0125):
                 cell_spikes, trigger_completes[stimulus_index], repeat_logics[stimulus_index], 1)
             spikes = spikes[0]
 
-            if sum([len(spikes[i]) for i in range(len(spikes))]) / repeats[stimulus_index] < 30:
+            if sum([len(spikes[i]) for i in range(len(spikes))]) / repeats[stimulus_index] < nspikes_thres:
                 stimulus_traits['repeats'] = repeats[stimulus_index]
                 stimulus_traits['repeat_duration'] = repeat_durations[stimulus_index]
 
@@ -175,12 +228,13 @@ def calculate_qi(stimulus_df, spikes_df, kernel_width=0.0125):
                 print(row[0][0], qi_per_cell[idx])
     spikes_df['New_qi'] = qi_per_cell
 
-    # Quality_df = single_stimulus.calculate_quality_index(stimulus_extr.spikes_stimulus, stimulus_extr.trigger_complete,
-    # int(stimulus_extr.stimulus_info["Stimulus_repeat_logic"]),
-    # Test_stimulus.sampling_frequency[0])
+
     return spikes_df
 
 def QI_parallel(stimulus_df, spikes_df, ):
+    """
+    Function to be seen by the 'run_multi' class for implementing parallelised (multiprocessing) workflow.
+    """
     df_split = np.array_split(spikes_df, mp.cpu_count())
     pool = mp.Pool(mp.cpu_count())
     try:
@@ -194,6 +248,9 @@ def QI_parallel(stimulus_df, spikes_df, ):
 
 
 class run_multi:
+    """
+    Class for implementing the multiprocessing(parallelisation) of QI_estimation in Jupyter Notebook.
+    """
     def __init__(self):
         print("run_multi initialized")
 
@@ -202,6 +259,18 @@ class run_multi:
 
 
 def plot_qc_locations_newqi(spikes, savename, invert=False, inverty=False, save=False, ):
+    """
+    Title is self-descriptive, function enables to plot cell_locations on chip. Not reliable for distances etc., takes
+    the info from the Centres_x and Centres_y levels of the mIndex
+    -spikes dataframe NEEDS to contain "New_qi", "total qc new" and "previously included" as columns. Stimulus- and
+    experiment- specific dataframe, others do not make sense to begin with.
+    -includes corrections for displaying the REAL chip orientation. If you prefer the default, from the mhenning package,
+    leave the invert, inverty arguments as False
+    save_name: str, name for the saving
+    tosave: bool
+
+    TODO: Consider adding arguments for plot colormap or dimensions internally? Of course some can be done post-assignment
+    """
     color_discrete_map = {True: 'rgb(112,112,112)', False: 'rgb(205,92,92)'}
 
     if invert == False:
@@ -269,10 +338,7 @@ def plot_qc_locations_newqi(spikes, savename, invert=False, inverty=False, save=
 
             )
 
-            # qc_locations_plt.update_yaxes(
-            #                scaleanchor = "x",
-            #                scaleratio = 1,
-            #                )
+
     if save == True:
         qc_locations_plt.write_image("%s.pdf" % savename, width=1000, height=1000,)
     return qc_locations_plt
@@ -280,7 +346,23 @@ def plot_qc_locations_newqi(spikes, savename, invert=False, inverty=False, save=
 
 def chip_image(threshold_old, threshold_new, spikes, stim_name, fill_na=True, case='inclusive', save_name='Random', tosave=False):
     """
-    Options for case: inclusive, end_inspection, end_exclusive, end_agreement
+    threshold_old:int or float to bottom filter "total qc new" column
+    threshold_new:int or float to bottom filter "New_qi" column. Greatly unlikely that it will be above 1
+    spikes: dataframe NEEDS to contain "New_qi", "total qc new" as columns
+    stim_name:str of the stimulus of interest
+    fill_na:If True, it will fill the na in the "New_qi" column with 0 so plotting of the points is possible
+    case: inclusive, end_inspection, end_clean, end_exclusive, end_agreement, only_old, only_new,
+    save_name: str, name for the saving
+    tosave: bool
+
+
+    Returns
+    spikes_thresholded :dataframe with additional bool "previously included" column of values determined by the
+    case argument
+    plotly_plot: full savename that includes the stimulus name
+
+
+    TODO: Add documentation about what each case is supposed to represent
     """
     spikes_filtered = spikes.xs(stim_name, level='Stimulus name')
     if fill_na:
@@ -307,7 +389,6 @@ def chip_image(threshold_old, threshold_new, spikes, stim_name, fill_na=True, ca
         spikes_thres = spikes_filtered[
             (spikes_filtered['New_qi'] > threshold_new) & (spikes_filtered['total qc new'] < threshold_old)]
         spikes_thres['previously_included'] =  (spikes_filtered['New_qi'] > threshold_new)
-
     elif case == 'end_exclusive':
         spikes_thres = spikes_filtered[
             (spikes_filtered['total qc new'] > threshold_old) & (spikes_filtered['New_qi'] < threshold_new)]
