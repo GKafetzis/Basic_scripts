@@ -17,6 +17,12 @@ from plotly.subplots import make_subplots
 from plotly import colors
 from IPython.display import display
 
+
+
+
+
+
+
 class Moving_stimulus():
 
 
@@ -181,16 +187,16 @@ class Moving_stimulus():
 
         return events
 
-    def remove_silent(self,):
+    def remove_silent(self, nbins=12, phase_dur=4, t_thresh=1, sig_thresh=4):
 
         """
         Returns df_spikes array having removed the indices of the empty/silent neurons.
         """
-        print('Assuming defaults for a 1000speed stimulus\nFirst removing the silent (no detected events) neurons\n****')
+        print('Assuming default threshold params for a 1000speed stimulus\nFirst removing the silent (no detected events) neurons\n****')
         silent_neurons=[]
         for cell_idx in np.arange(len(self.df_spikes)):
-            spikes_profile=self.cell_hist_per_dir(cell_idx, nr_bins=12, trial_dur=4,)
-            if sum(np.unique([len(self.find_threshold_events(spikes_profile, 1, 4)[i]) for i in range(self.repeat_logic)]))<1:
+            spikes_profile=self.cell_hist_per_dir(cell_idx, nr_bins=nbins, trial_dur=phase_dur,)
+            if sum(np.unique([len(self.find_threshold_events(spikes_profile, t_thresh=t_thresh, sig_thresh=sig_thresh)[i]) for i in range(self.repeat_logic)]))<1:
                 silent_neurons.append(cell_idx)
         #print (cell_idx, ([len(test_class.find_threshold_events(spikes_profile, 1, 4)[i]) for i in range(8)]) )
         excluded = [a for a in np.arange(len(self.df_spikes)) if a not in set(silent_neurons)]
@@ -569,7 +575,7 @@ class Moving_stimulus():
         return fig
 
 
-    def present_rawspikes(self, cell_indices:list, trial_duration=4, sampling_freq=17852):
+    def present_rawspikes(self, cell_indices:list, trial_duration=4, sampling_freq=17852.76785):
 
         dat_cell_indices=[]
         for val in cell_indices:

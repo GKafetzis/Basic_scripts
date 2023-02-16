@@ -1,4 +1,5 @@
 from MEA_analysis import stimulus_and_spikes as sas
+from MEA_analysis import Overview
 import MEA_analysis
 import plotly
 import plotly.graph_objects as go
@@ -20,7 +21,11 @@ def reorder_elements(arr, index, n):
 
     return temp
 
+def stim_col_filter(recording:MEA_analysis.Overview.Dataframe, stim_name:str, col_name:str, thresh:float) -> list:
+    df_filtered= recording.get_stimulus_subset(name= stim_name)[0]
 
+    idces_filter= list(df_filtered[df_filtered[col_name]>thresh].index.get_level_values(0))
+    return idces_filter
 def prepare_dataframes_bystring(recording: MEA_analysis.Overview.Dataframe, bystring: str) -> pd.core.frame.DataFrame:
     dataframe_stimulus = recording.stimulus_df.loc[
         [idx for idx, val in enumerate(recording.stimulus_df['Stimulus_name'].values) if bystring in val]]

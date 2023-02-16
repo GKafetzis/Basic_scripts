@@ -1,12 +1,16 @@
 import traceback
 import multiprocessing as mp
 from functools import partial
+from typing import Union
 
 import numpy as np
+import math
+import bisect
 from MEA_analysis import stimulus_and_spikes as sp
 import scipy.signal as signal
 import pandas as pd
 import plotly.express as px
+
 
 #TODO Allow calculate_qi for some stimuli in dataframe, currently all
 def kernel_template(width=0.01, sampling_freq=17852.767845719834):
@@ -146,12 +150,58 @@ def fast_qi_exclusive(spikes, stimulus_traits, kernel_width,):
 
     return calc_tradqi(exs)
 
+def rebin_spikes(spike_idxs: np.ndarray, downsample_factor: int) -> np.ndarray:
+    """Calculate the spike indices after downsampling.
+    Args:
+        spike_idxs: The spike indices before downsampling.
+    This method is very simple: just floor divide the indicies. It's good to
+    have a dedicated function just so we are clear what the behaviour is,
+    and to insure that we are doing it consistently.
+    """
+    res = np.floor_divide(spike_idxs, downsample_factor)
+    return res
+
+def decompress_spikes(
+    spikes: Union[np.ndarray, np.ma.MaskedArray],
+    num_sensor_samples: int,
+    downsample_factor: int = 1,
+) -> np.ndarray:
+    """
+    Fills an integer array counting the number of spikes that occurred.
+    If downsample_factor is 1 (no downampling), then the output array will
+    be an array of 0s and 1s, where 1 indicates that a spike occurred in that
+    time bin.
+    Setting downsample_factor to an integer greater than 1 will result in
+    the spikes being counted in larger bin sizes that the original sensor
+    sample period. So we are not talking about signal downsampling, Nyquist
+    rates etc., rather we are talking about histogram binning where the bin
+    size is scaled by downsample_factor. This behaviour is similar to Pandas's
+    resample().sum() pattern.
+    Binning behaviour
+    -----------------
+    As only integer values are accepted for downsample_factor, the binning is
+    achieved by floor division of the original spike index. Examples:
+        1. Input: [0, 0, 0, 1, 1], downsample_factor=2, output: [0, 1, 1]
+        1. Input: [0, 0, 0, 1, 1, 1], downsample_factor=2, output: [0, 1, 2]
+    """
+    if np.ma.isMaskedArray(spikes):
+        spikes = spikes.compressed()
+    downsampled_spikes = rebin_spikes(spikes, downsample_factor)
+    res = np.zeros(
+        shape=[
+            math.ceil(num_sensor_samples / downsample_factor),
+        ],
+        dtype=int,
+    )
+    np.add.at(res, downsampled_spikes, 1)
+    return res
+
 def create_full_logbook(stimulus_df):
     """
     Either queries or computes useful stimulus-specific properties and stores them in separate lists.
     Currently to be used exclusively with 'calculate_qi' function, need to think of further uses.
     """
-    nr_stimuli = stimulus_df.index.unique()
+    nr_stimuli = stimulus_df.index.unique(0)
     sampling_freq = 17852.767845719834
     trigger_completes = [stimulus_df.loc[i][
                              "Trigger_Fr_relative"
@@ -171,7 +221,9 @@ def create_full_logbook(stimulus_df):
 
     return sampling_freq, trigger_completes, repeat_logics, repeats, repeat_durations
 
-def calculate_qi(stimulus_df, spikes_df, nspikes_thres=30, kernel_width=0.0125):
+
+
+def calculate_qi(stimulus_df, spikes_df, forwhich:list =[0,1,3,4], nspikes_thres=30, kernel_width=0.0125, fuse='decompress', dsf=200):
 
     """
     The main function. Given a FULL stimulus_df(i.e. qi to be computed for ALL stimuli), it calculates the QI value with
@@ -194,38 +246,67 @@ def calculate_qi(stimulus_df, spikes_df, nspikes_thres=30, kernel_width=0.0125):
 
         stimulus_index = row[0][1]
 
-        cell_spikes = row[1].compressed()
-
-        if np.sum(cell_spikes) < 1:
-            qi_per_cell[idx] = np.nan
-            continue
+        if stimulus_index not in forwhich:
+            qi_per_cell[idx]=0
         else:
+            cell_spikes = row[1].compressed()
 
-            if idx == 0 or idx == 1000:
-                print(stimulus_df.loc[stimulus_index]['Stimulus_name'], repeat_durations[stimulus_index])
-
-            spikes = sp.get_spikes_whole_stimulus_new_trainsomitted(
-                cell_spikes, trigger_completes[stimulus_index], repeat_logics[stimulus_index], 1)
-            spikes = spikes[0]
-
-            if sum([len(spikes[i]) for i in range(len(spikes))]) / repeats[stimulus_index] < nspikes_thres:
-                stimulus_traits['repeats'] = repeats[stimulus_index]
-                stimulus_traits['repeat_duration'] = repeat_durations[stimulus_index]
-
-                qi_per_cell[idx] = fast_qi_exclusive(spikes, stimulus_traits, kernel_width)
+            if np.sum(cell_spikes) < 1:
+                qi_per_cell[idx] = np.nan
+                continue
             else:
 
-                frames = int((repeat_durations[stimulus_index] + 0.4) * int(sampling_freq))
-                spiketimes = np.zeros((len(spikes), frames - 1))
-                gauswins = np.tile(kernel_template(width=kernel_width)[::-1], (repeats[stimulus_index], 1))
-                exs = np.zeros((len(spikes), frames - gauswins.shape[1]))
-                for trial in range(len(spikes)):
-                    spiketimes = spike_padding_new(spiketimes, spikes, trial)
-                exs = signal.oaconvolve(spiketimes, gauswins, mode='valid', axes=1)
-                qi_per_cell[idx] = calc_tradqi(exs)
+                if idx == 0 or idx == 1000:
+                    print(stimulus_df.loc[stimulus_index]['Stimulus_name'], repeat_durations[stimulus_index])
 
-            if idx % 1000 == 0:
-                print(row[0][0], qi_per_cell[idx])
+                spikes = sp.get_spikes_whole_stimulus_new_trainsomitted(
+                    cell_spikes, trigger_completes[stimulus_index], repeat_logics[stimulus_index], 1)
+                spikes = spikes[0]
+
+                if sum([len(spikes[i]) for i in range(len(spikes))]) / repeats[stimulus_index] < nspikes_thres:
+                    stimulus_traits['repeats'] = repeats[stimulus_index]
+                    stimulus_traits['repeat_duration'] = repeat_durations[stimulus_index]
+
+                    qi_per_cell[idx] = fast_qi_exclusive(spikes, stimulus_traits, kernel_width)
+                else:
+                    if fuse=='decompress':
+                        frames=math.ceil(repeat_durations[stimulus_index]*int(sampling_freq))
+                        spiketimes=np.zeros((len(spikes), math.ceil(frames/dsf)))
+                        #print(spiketimes.shape)
+                        for trial in range(len(spikes)):
+                            #TODO figure out why there are spikes of longer times
+                            if len(spikes[trial])==0:
+                                continue
+                            else:
+                                spikes_hold = spikes[trial][:bisect.bisect_left(spikes[trial],frames)]
+                            # print(list(spikes[trial].astype(int)))
+                            #try:
+                                spiketimes[trial] = decompress_spikes(list(spikes_hold.astype(int)),
+                                                       (repeat_durations[stimulus_index] * sampling_freq),
+                                                       dsf)
+                            #except IndexError:
+                                #print(row, stimulus_index, trial)
+                                #break
+
+                        gauswins = np.tile(kernel_template(width=kernel_width / dsf)[::-1],
+                                               (repeats[stimulus_index], 1))
+                        exs = np.zeros((len(spikes), len(spiketimes[1]) - gauswins.shape[1]))
+                        exs = signal.oaconvolve(spiketimes, gauswins, mode='valid', axes=1)
+                        qi_per_cell[idx] = calc_tradqi(exs)
+
+
+                    else:
+                        frames = int((repeat_durations[stimulus_index] + 0.4) * int(sampling_freq))
+                        spiketimes = np.zeros((len(spikes), frames - 1))
+                        gauswins = np.tile(kernel_template(width=kernel_width)[::-1], (repeats[stimulus_index], 1))
+                        exs = np.zeros((len(spikes), frames - gauswins.shape[1]))
+                        for trial in range(len(spikes)):
+                            spiketimes = spike_padding_new(spiketimes, spikes, trial)
+                        exs = signal.oaconvolve(spiketimes, gauswins, mode='valid', axes=1)
+                        qi_per_cell[idx] = calc_tradqi(exs)
+
+                if idx % 1000 == 0:
+                    print(row[0][0], qi_per_cell[idx])
     spikes_df['New_qi'] = qi_per_cell
 
 
