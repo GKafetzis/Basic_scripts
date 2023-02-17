@@ -21,11 +21,14 @@ def reorder_elements(arr, index, n):
 
     return temp
 
-def stim_col_filter(recording:MEA_analysis.Overview.Dataframe, stim_name:str, col_name:str, thresh:float) -> list:
-    df_filtered= recording.get_stimulus_subset(name= stim_name)[0]
 
-    idces_filter= list(df_filtered[df_filtered[col_name]>thresh].index.get_level_values(0))
+def stim_col_filter(recording: MEA_analysis.Overview.Dataframe, stim_name: str, col_name: str, thresh: float) -> list:
+    df_filtered = recording.get_stimulus_subset(name=stim_name)[0]
+
+    idces_filter = list(df_filtered[df_filtered[col_name] > thresh].index.get_level_values(0))
     return idces_filter
+
+
 def prepare_dataframes_bystring(recording: MEA_analysis.Overview.Dataframe, bystring: str) -> pd.core.frame.DataFrame:
     dataframe_stimulus = recording.stimulus_df.loc[
         [idx for idx, val in enumerate(recording.stimulus_df['Stimulus_name'].values) if bystring in val]]
@@ -54,7 +57,7 @@ def prepare_dataframes(recording: MEA_analysis.Overview.Dataframe, stimuli_indic
 
 
 def get_stimulus_traits(dataframe_stimulus: pd.core.frame.DataFrame, stimulus_index: int, sampling_freq=None) -> dict:
-    #TO-DO: Maybe include here whether stimulus is homogeneous or not by comparing the phase_dur intervals within repeat
+    # TO-DO: Maybe include here whether stimulus is homogeneous or not by comparing the phase_dur intervals within repeat
     stimulus_name = dataframe_stimulus['Stimulus_name'].values[stimulus_index]
     stimulus_trig_rel = dataframe_stimulus['Trigger_Fr_relative'].values[stimulus_index]
     stimulus_trials = int(dataframe_stimulus['Stimulus_repeat_logic'].values[stimulus_index])
@@ -62,9 +65,9 @@ def get_stimulus_traits(dataframe_stimulus: pd.core.frame.DataFrame, stimulus_in
         (len(dataframe_stimulus['Trigger_Fr_relative'].values[stimulus_index]) - 1) / stimulus_trials)
     stimulus_subphases = int(dataframe_stimulus['Stimulus_repeat_sublogic'].values[stimulus_index])
     if not sampling_freq:
-        sampling_freq=17852.767845719834
+        sampling_freq = 17852.767845719834
 
-    stimulus_phase_dur= int(np.round((stimulus_trig_rel[1]- stimulus_trig_rel[0])/sampling_freq,0))
+    stimulus_phase_dur = int(np.round((stimulus_trig_rel[1] - stimulus_trig_rel[0]) / sampling_freq, 0))
     stimulus_traits = {
         "stim_name": stimulus_name,
         "stim_rel_trig": stimulus_trig_rel,
@@ -116,7 +119,6 @@ def get_cell_spiketrains_per_stimulus(cell: int, dataframe_spikes: pd.core.frame
 
 def kerberos_spiketrains_per_stimulus(cell: int, dataframe_spikes: pd.core.frame.DataFrame, stimulus_traits: dict,
                                       phase_dur: int, sampling_freq: float, inhomogeneous: bool = False):
-
     ###TO-DO: Consider estimating if function is homogeneous by comparing windows of phase_dur
 
     if inhomogeneous:
@@ -127,7 +129,7 @@ def kerberos_spiketrains_per_stimulus(cell: int, dataframe_spikes: pd.core.frame
             sampling_freq)
     else:
         spiketrains_list = get_cell_spiketrains_per_stimulus(cell, dataframe_spikes.reset_index(),
-                                                                   stimulus_traits, phase_dur, sampling_freq)
+                                                             stimulus_traits, phase_dur, sampling_freq)
 
     return spiketrains_list
 
@@ -144,8 +146,6 @@ def reorder_spiketrains(spiketrains: list, stimulus_traits: dict, pseudorder: li
             list(compress(flat_spiketrain, list(map(lambda x: x == elem, pseudorder_sampled)))))
 
     return reordered_spiketrains
-
-
 
 
 def plot_raster_only_new(spiketrains, phase_dur, markersize=2):
@@ -208,7 +208,8 @@ def plot_raster_inhomogeneous(spiketrains, phase_dur, markersize=2):
 
 
 def plot_sc_aligned_new(cell: int, spiketrains_list: list, stimulus_traits: pd.core.frame.DataFrame, phase_dur: int,
-                        colors: list=['#FE7C7C', '#FAFE7C', '#8AFE7C', '#7CFCFE', '#7C86FE', '#FE7CFE']) -> plotly.graph_objs._figure.Figure:
+                        colors: list = ['#FE7C7C', '#FAFE7C', '#8AFE7C', '#7CFCFE', '#7C86FE',
+                                        '#FE7CFE']) -> plotly.graph_objs._figure.Figure:
     """
     To do: add save option and title for stimulus that played
     """
@@ -233,7 +234,8 @@ def plot_sc_aligned_new(cell: int, spiketrains_list: list, stimulus_traits: pd.c
             figure = update_plot_withdirections(figure)
             figure.for_each_xaxis(lambda x: x.update(range=[-0.8, phase_dur]))
 
-    figure.update_layout(title='Cell %d - Stimulus %s' % (cell, stimulus_traits["stim_name"]))
+    figure.update_layout(title='Cell %d - Stimulus %s' % (cell, stimulus_traits["stim_name"]),
+                         showlegend=False)
 
     return figure
 
@@ -363,8 +365,8 @@ def plot_c_spiketrain_per_stimulus_new(cell_idx: int, arrays_select: list, df_sp
 
     return figure
 
-def calculate_psth_trace(spikes_df, to_normalise=False, normalising_array=None):
 
+def calculate_psth_trace(spikes_df, to_normalise=False, normalising_array=None):
     histogram_column = spikes_df.loc[:, "PSTH"]
     histograms = histogram_column.values
     histogram_arr = np.zeros((len(spikes_df), np.shape(histograms[0])[0]))
@@ -374,14 +376,13 @@ def calculate_psth_trace(spikes_df, to_normalise=False, normalising_array=None):
     nr_cells = np.shape(histograms)[0]
     cell_indices = np.linspace(0, nr_cells - 1, nr_cells)
 
-
-
     for cell in range(nr_cells):
         if np.max(histograms[cell]) == 0:
             histogram_arr[cell, :] = 0
         else:
             try:
-                histogram_arr[cell, :] = histograms[cell] / np.max(histograms[cell]) if not to_normalise else histograms[cell]/ normalising_array[cell]
+                histogram_arr[cell, :] = histograms[cell] / np.max(histograms[cell]) if not to_normalise else \
+                histograms[cell] / normalising_array[cell]
             except ValueError:
                 extra_bins = np.shape(histograms[cell])[0] - np.shape(histogram_arr)[0]
                 histogram_arr_temp = histograms[cell] / np.max(histograms[cell])
@@ -392,21 +393,23 @@ def calculate_psth_trace(spikes_df, to_normalise=False, normalising_array=None):
 
     return bins_x, histogram_arr
 
-def plot_heatmap_adj(spike_df, stimulus_df, stimulus_index:int, mid_dim: int = 1.2, to_normalise=False, normalising_array=None,
+
+def plot_heatmap_adj(spike_df, stimulus_df, stimulus_index: int, mid_dim: int = 1.2, to_normalise=False,
+                     normalising_array=None,
                      scale_to=None, save=False, savename=None):
     """
     spikes_df needs to include PSTH and PSTH_x values
     TO-DO: implement normalisation of spikes across different stimuli for same cell.
     """
-    stimulus_traits=get_stimulus_traits(stimulus_df, stimulus_index)
-    stimulus_trace= xyplot_stim_steps(stimulus_traits["stim_trials"], stimulus_traits["stim_phase_dur"], yrange=[0.98, 1.08])
-    stimulus_trace=[stimulus_trace[0][:-1], stimulus_trace[1]]
+    stimulus_traits = get_stimulus_traits(stimulus_df, stimulus_index)
+    stimulus_trace = xyplot_stim_steps(stimulus_traits["stim_trials"], stimulus_traits["stim_phase_dur"],
+                                       yrange=[0.98, 1.08])
+    stimulus_trace = [stimulus_trace[0][:-1], stimulus_trace[1]]
 
-    spikes_df= spike_df.loc[slice(None),["Stimulus ID", stimulus_index], :]
+    spikes_df = spike_df.loc[slice(None), ["Stimulus ID", stimulus_index], :]
 
-    bins, histogram_arr= calculate_psth_trace(spikes_df, to_normalise, normalising_array)
+    bins, histogram_arr = calculate_psth_trace(spikes_df, to_normalise, normalising_array)
     cell_indices = np.linspace(0, len(spikes_df) - 1, len(spikes_df))
-
 
     histogram_fig = plotly.subplots.make_subplots(
         rows=3,
@@ -418,7 +421,7 @@ def plot_heatmap_adj(spike_df, stimulus_df, stimulus_index:int, mid_dim: int = 1
     histogram_fig.add_trace(
         go.Scatter(
             x=bins,
-            y=(np.mean(histogram_arr, axis=0)/np.max(np.mean(histogram_arr, axis=0)))*len(spikes_df),
+            y=(np.mean(histogram_arr, axis=0) / np.max(np.mean(histogram_arr, axis=0))) * len(spikes_df),
             # y=val_scaled_rel(np.mean(histogram_arr, axis=0), traces[1]),
             mode="lines",
             name="Average PSTH",
@@ -454,11 +457,10 @@ def plot_heatmap_adj(spike_df, stimulus_df, stimulus_index:int, mid_dim: int = 1
     )
     histogram_fig.update_traces(showscale=False, selector=dict(type="heatmap"), row=2, col=1)
 
-
     histogram_fig.add_trace(
-            go.Scatter(x=stimulus_trace[0], y=stimulus_trace[1], mode="lines", marker_color='black'),
-            row=3,
-            col=1,
+        go.Scatter(x=stimulus_trace[0], y=stimulus_trace[1], mode="lines", marker_color='black'),
+        row=3,
+        col=1,
     )
 
     if stimulus_traits["stim_name"] == 'FFF':
@@ -468,18 +470,18 @@ def plot_heatmap_adj(spike_df, stimulus_df, stimulus_index:int, mid_dim: int = 1
 
         for trial in range(stimulus_traits["stim_trials"]):
             histogram_fig.add_shape(dict(type="rect",
-                               x0=0 + (trial * stimulus_traits["stim_phase_dur"]),
-                               y0=-0.5,
-                               x1=stimulus_traits["stim_phase_dur"] / stimulus_traits["stim_subphases"]+
-                                  (trial * stimulus_traits["stim_phase_dur"]),
-                               y1=len(spikes_df)-0.5,
-                               line_color=colors[trial], fillcolor=colors[trial], line_width=1, opacity=0.2,
-                               ), row=2, col=1)
+                                         x0=0 + (trial * stimulus_traits["stim_phase_dur"]),
+                                         y0=-0.5,
+                                         x1=stimulus_traits["stim_phase_dur"] / stimulus_traits["stim_subphases"] +
+                                            (trial * stimulus_traits["stim_phase_dur"]),
+                                         y1=len(spikes_df) - 0.5,
+                                         line_color=colors[trial], fillcolor=colors[trial], line_width=1, opacity=0.2,
+                                         ), row=2, col=1)
 
     if scale_to is None:
-        y_range=[-.1, len(spikes_df)+0.8]
+        y_range = [-.1, len(spikes_df) + 0.8]
     else:
-        y_range=[-.1, len(scale_to)+0.8]
+        y_range = [-.1, len(scale_to) + 0.8]
 
     histogram_fig.update_xaxes(showticklabels=False, row=1, col=1)
     histogram_fig.update_yaxes(showticklabels=False, row=3, col=1)
@@ -488,14 +490,13 @@ def plot_heatmap_adj(spike_df, stimulus_df, stimulus_index:int, mid_dim: int = 1
     histogram_fig.update_yaxes(range=y_range, showticklabels=False, row=2, col=1)
     histogram_fig.update_xaxes(title_text="Time in Seconds", row=3, col=1)
 
-    histogram_fig.update_layout( {"plot_bgcolor": "rgba(0, 0, 0, 0)"},
-                                 height=1080,
-                                 width=1980,
-                                 showlegend=False)
-
+    histogram_fig.update_layout({"plot_bgcolor": "rgba(0, 0, 0, 0)"},
+                                height=1080,
+                                width=1980,
+                                showlegend=False)
 
     if save == True:
-        histogram_fig.write_image("%s.pdf" % savename, width=1980*2, height=1080*2,)
+        histogram_fig.write_image("%s.pdf" % savename, width=1980 * 2, height=1080 * 2, )
 
     return histogram_fig
 
@@ -508,6 +509,7 @@ def xyplot_stim_steps(ntrials: int, phase_dur: int, yrange: list) -> list:
     xs = list(itertools.chain.from_iterable(listOfLists))
 
     return xs, ys
+
 
 def create_RGCtypes():
     RGC_categories = ['ON', 'OFF', 'ONOFF', 'unclear']

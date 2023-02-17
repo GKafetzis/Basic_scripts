@@ -8,6 +8,15 @@ from Basic_scripts import Basic
 from math import radians, degrees
 
 from itertools import compress
+import pyspike
+import pycircstat
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+from plotly import colors
+
+from ipywidgets import HBox, VBox
+import ipywidgets as widgets
 
 
 # print ("You have imported 'Single_cell_MB' ")
@@ -37,7 +46,7 @@ def reorder(arr, index, n):
 
 def order_angles(dir_degrees, re_order):
     angles_ordered_d = reorder(dir_degrees, re_order, len(dir_degrees))
-    angles_ordered_d = np.append(angles_ordered_d, angles_ordered_d[0])
+    # angles_ordered_d = np.append(angles_ordered_d, angles_ordered_d[0])
 
     angles_ordered_a = np.zeros(len(angles_ordered_d))
     for i in range(len(angles_ordered_d)):
@@ -117,7 +126,7 @@ def norm_byarea(spikes_per_segment):
     """
     Normalization by area, default
     """
-    normed_spikes_per_segment = np.nanmean(spikes_per_segment, axis=0) / (
+    normed_spikes_per_segment = np.mean(spikes_per_segment, axis=0) / (
             np.nansum(spikes_per_segment) / (spikes_per_segment.shape[0] * spikes_per_segment.shape[1]))
 
     return normed_spikes_per_segment
@@ -161,13 +170,13 @@ def calculate_dos(normed_spikes_per_segment):
 
 def create_permuted_spikes(single_stimulus, cell_index, df_spikes, df_stimulus, npermut=1000, ):
     cell_spikes, stim_traits = spikes_and_traits(single_stimulus, cell_index, df_spikes, df_stimulus)
-    nspikes_per_trial = np.round(len(cell_spikes) / stim_traits['stim_trials'], 0).astype(int)
+    nspikes_per_trial = np.round(len(cell_spikes) / stim_traits['stim_repeats'], 0).astype(int)
     perm_pop = np.zeros([npermut, stim_traits['stim_repeats'], stim_traits['stim_trials']])
 
     for perm in range(npermut):
         for repeat in range(stim_traits['stim_repeats']):
             perm_pop[perm, repeat] = np.bincount(
-                rng.integers(0, stim_traits['stim_trials'] - 1, size=nspikes_per_trial),
+                rng.integers(0, stim_traits['stim_trials'], size=nspikes_per_trial),
                 minlength=stim_traits['stim_trials'])
 
     return perm_pop
@@ -181,6 +190,10 @@ def dsi_test(cell_dsi, perm_pop, a=0.05):
         return True
     else:
         return False
+
+
+def is_quiet(spikes_per_dir, level=0.8):
+    return True if np.max(spikes_per_dir) < level else False
 
 
 def is_silent(hist_per_dir, t_thresh=1, sig_thresh=4):
@@ -216,6 +229,139 @@ def find_threshold_events(hist_per_dir, t_thresh, sig_thresh):
         events.append(list(compress(points, idces)))
 
     return events
+
+
+def moving_cell(single_stimulus, cell_index, df_spikes, df_stimulus, toreorder=False, re_order=None, ashist=False,
+                nr_bins=12, t_thresh=1, sig_thresh=4, quiet_level=0.8):
+    spikes_per_dir, spikesperseg, hist_per_dir = spikes_per_seg(single_stimulus, cell_index, df_spikes, df_stimulus,
+                                                                toreorder,
+                                                                re_order, ashist,
+                                                                nr_bins)
+    if is_silent(hist_per_dir, t_thresh, sig_thresh):
+        return None
+    elif is_quiet(spikes_per_dir, level=quiet_level):
+        return None
+    else:
+        ds, os = calculate_dos(norm_byarea(spikesperseg))
+        # print('DSI:', ds)
+        # print('OSI:', os)
+
+        perm_pop = create_permuted_spikes(single_stimulus, cell_index, df_spikes, df_stimulus)
+        # print('Signif:', dsi_test(calculate_dos(norm_byarea(spikesperseg))[0], perm_pop))
+
+        if dsi_test(ds, perm_pop):
+            print(cell_index, ds, os)
+        return None
+
+
+def moving_all(df_spikes, df_stimulus, toreorder=False, re_order=None, ashist=False,
+               nr_bins=12, t_thresh=1, sig_thresh=4, quiet_level=0.8):
+    for row, idx in zip(df_spikes.itertuples(), range(len(df_spikes))):
+        cell_index = row[0][0]
+        single_stimulus = row[0][1]
+
+        moving_cell(single_stimulus, cell_index, df_spikes, df_stimulus, toreorder, re_order, ashist,
+                    nr_bins, t_thresh, sig_thresh, quiet_level)
+
+    return None
+
+
+################ Plotting part #########################
+
+def get_cell_spiketrains_per_stimulus(cell_spikes, stim_traits, toreorder=False,
+                                      re_order=None, ):
+    spiketrains_list = []
+
+    for trial in range(stim_traits['stim_trials']):
+
+        spikes_per_trial = (sas.get_spikes_per_trigger_type_new(cell_spikes, stim_traits['stim_rel_trig'], trial,
+                                                                stim_traits['stim_trials'])[0])
+
+        spiketrain_list = []
+        for repeat in range(stim_traits['stim_repeats']):
+            spikes_per_trial[repeat] = spikes_per_trial[repeat] / stim_traits['sampling_freq']
+            spiketrain_list.append(
+                pyspike.SpikeTrain(spikes_per_trial[repeat], edges=[0, stim_traits['stim_phase_dur']]))
+
+        spiketrains_list.append(spiketrain_list)
+
+    if toreorder:
+        spiketrains_list = reorder_spikes_per_dir(spiketrains_list, re_order)
+
+    return spiketrains_list
+
+
+def plot_ds_spiketrains(single_stimulus, cell_index, df_spikes, df_stimulus, toreorder=False,
+                        re_order=None, ):
+    cell_spikes, stim_traits = spikes_and_traits(single_stimulus, cell_index, df_spikes, df_stimulus)
+
+    spiketrains_list = get_cell_spiketrains_per_stimulus(cell_spikes, stim_traits, toreorder, re_order, )
+
+    return Basic.plot_sc_aligned_new(cell_index, spiketrains_list, stim_traits, stim_traits['stim_phase_dur'])
+
+
+def _encircle(arr):
+    return np.insert(arr, len(arr), arr[0])
+
+
+def plot_polar_ds(spikes_per_segment, dir_degrees):
+    """
+    Input needs to be correctly reordered already
+    """
+    re_order, angles_ordered_a, angles_ordered_d = check_order(dir_degrees)
+    cols = colors.DEFAULT_PLOTLY_COLORS
+    fig = make_subplots(rows=1, cols=1, specs=[[{'type': 'polar'}] * 1] * 1, subplot_titles='')
+
+    for repeat in range(spikes_per_segment.shape[0]):
+        sp = spikes_per_segment[repeat] / (
+                np.nansum(spikes_per_segment) / (spikes_per_segment.shape[0] * spikes_per_segment.shape[1]))
+
+        fig.add_trace(go.Scatterpolar(
+            r=_encircle(sp),
+            theta=_encircle(angles_ordered_d),
+            mode='lines',
+            marker=dict(color='#d6d6d6')
+        ))
+
+    fig.add_trace(go.Scatterpolar(
+        r=_encircle(norm_byarea(spikes_per_segment)),
+        theta=_encircle(angles_ordered_d),
+        mode='lines',
+        marker=dict(color=cols[0])
+    ))
+
+    fig.add_trace(go.Scatterpolar(
+        r=[0, pycircstat.resultant_vector_length(angles_ordered_a,
+                                                 norm_byarea(spikes_per_segment), d=0.78539816)],
+        theta=[0, degrees(pycircstat.mean(angles_ordered_a,
+                                          norm_byarea(spikes_per_segment), d=0.78539816))],
+        mode='lines',
+        marker=dict(color=cols[3])
+    ))
+
+    fig.update_annotations(yshift=25, xshift=-45)
+
+    fig.update_layout(autosize=False,
+                      width=580,
+                      height=580,
+                      showlegend=False)
+    fig.update_polars(radialaxis=dict(tickmode='array', tickvals=[0.5, 1], ticktext=['', ''], range=[0, 3]))
+
+    return fig
+
+
+def plot_ds_overview_cell(single_stimulus, cell_index, df_spikes, df_stimulus, dir_degrees, toreorder=False, ):
+    spikes_per_segment = spikes_per_seg(single_stimulus, cell_index, df_spikes, df_stimulus, toreorder=True,
+                                        re_order=check_order(dir_degrees)[0])[1]
+    fig_polar_ds = plot_polar_ds(spikes_per_segment, dir_degrees)
+
+    fig_ds_spiketrains = plot_ds_spiketrains(single_stimulus, cell_index, df_spikes, df_stimulus, toreorder,
+                                             re_order=check_order(dir_degrees)[0])
+    fig_ds_spiketrains.update_layout(autosize=False, width=1600, height=620)
+    fig_ds_spiketrains.show()
+    fig_polar_ds.show()
+
+    return fig_polar_ds, fig_ds_spiketrains
 
 
 class Peak:
@@ -271,36 +417,3 @@ def get_persistent_homology(seq):
 
     # This is optional convenience
     return sorted(peaks, key=lambda p: p.get_persistence(seq), reverse=True)
-
-
-def moving_cell(single_stimulus, cell_index, df_spikes, df_stimulus, toreorder=False, re_order=None, ashist=False,
-                nr_bins=12, t_thresh=1, sig_thresh=4):
-    _, spikesperseg, hist_per_dir = spikes_per_seg(single_stimulus, cell_index, df_spikes, df_stimulus, toreorder,
-                                                   re_order, ashist,
-                                                   nr_bins)
-    if is_silent(hist_per_dir, t_thresh, sig_thresh):
-
-        return None
-    else:
-        ds, os = calculate_dos(norm_byarea(spikesperseg))
-        # print('DSI:', ds)
-        # print('OSI:', os)
-
-        perm_pop = create_permuted_spikes(single_stimulus, cell_index, df_spikes, df_stimulus)
-        # print('Signif:', dsi_test(calculate_dos(norm_byarea(spikesperseg))[0], perm_pop))
-
-        if dsi_test(calculate_dos(norm_byarea(spikesperseg))[0], perm_pop):
-            print(cell_index, ds, os)
-        return None
-
-
-def moving_all(df_spikes, df_stimulus, toreorder=False, re_order=None, ashist=False,
-               nr_bins=12, t_thresh=1, sig_thresh=4):
-    for row, idx in zip(df_spikes.itertuples(), range(len(df_spikes))):
-        cell_index = row[0][0]
-        single_stimulus = row[0][1]
-
-        moving_cell(single_stimulus, cell_index, df_spikes, df_stimulus, toreorder, re_order, ashist,
-                    nr_bins, t_thresh, sig_thresh)
-
-    return None
