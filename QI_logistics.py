@@ -12,7 +12,7 @@ import pandas as pd
 import plotly.express as px
 
 
-#TODO Allow calculate_qi for some stimuli in dataframe, currently all
+# TODO Allow calculate_qi for some stimuli in dataframe, currently all
 def kernel_template(width=0.01, sampling_freq=17852.767845719834):
     """
     create Gaussian kernel by providing the width (FWHM) value. According to wiki, this is approx. 2.355*std of dist.
@@ -89,7 +89,7 @@ def fast_qi(spikes, stimulus_traits, repeat_duration, kernel_width, sampling_fre
             except ValueError:
                 if np.ceil(spike - (len(gauswin) / 2)) < 0:
                     a[idx][0:len(gauswin) - int((len(gauswin) / 2) - np.ceil(spike))] = gauswin[int((
-                                                                                                                len(gauswin) / 2) - np.ceil(
+                                                                                                            len(gauswin) / 2) - np.ceil(
                         spike)):]
                 elif np.ceil(spike + (len(gauswin) / 2)) > int(repeat_duration) * int(
                         Test_stimulus.sampling_frequency[0]):
@@ -123,7 +123,7 @@ def fast_qi_exclusive_old(spikes, stimulus_traits, repeat_duration, sampling_fre
     return calc_tradqi(exs)
 
 
-def fast_qi_exclusive(spikes, stimulus_traits, kernel_width,):
+def fast_qi_exclusive(spikes, stimulus_traits, kernel_width, ):
     """
     Faster implementation to the actual convolution of the spikes stim_time with a Gaussian window, BUT only for few
     spikes. Works by fitting hats around the location of each spike, and deals with border cases (where the hat does not
@@ -150,6 +150,7 @@ def fast_qi_exclusive(spikes, stimulus_traits, kernel_width,):
 
     return calc_tradqi(exs)
 
+
 def rebin_spikes(spike_idxs: np.ndarray, downsample_factor: int) -> np.ndarray:
     """Calculate the spike indices after downsampling.
     Args:
@@ -161,10 +162,11 @@ def rebin_spikes(spike_idxs: np.ndarray, downsample_factor: int) -> np.ndarray:
     res = np.floor_divide(spike_idxs, downsample_factor)
     return res
 
+
 def decompress_spikes(
-    spikes: Union[np.ndarray, np.ma.MaskedArray],
-    num_sensor_samples: int,
-    downsample_factor: int = 1,
+        spikes: Union[np.ndarray, np.ma.MaskedArray],
+        num_sensor_samples: int,
+        downsample_factor: int = 1,
 ) -> np.ndarray:
     """
     Fills an integer array counting the number of spikes that occurred.
@@ -196,6 +198,7 @@ def decompress_spikes(
     np.add.at(res, downsampled_spikes, 1)
     return res
 
+
 def create_full_logbook(stimulus_df):
     """
     Either queries or computes useful stimulus-specific properties and stores them in separate lists.
@@ -222,9 +225,8 @@ def create_full_logbook(stimulus_df):
     return sampling_freq, trigger_completes, repeat_logics, repeats, repeat_durations
 
 
-
-def calculate_qi(stimulus_df, spikes_df, forwhich:list =[0,1,3,4], nspikes_thres=30, kernel_width=0.0125, fuse='decompress', dsf=200):
-
+def calculate_qi(stimulus_df, spikes_df, forwhich: list = [0, 1, 3, 4], nspikes_thres=30, kernel_width=0.0125,
+                 fuse='decompress', dsf=200):
     """
     The main function. Given a FULL stimulus_df(i.e. qi to be computed for ALL stimuli), it calculates the QI value with
     the Gaussian kernel implementation, and returns the spikes_df with a 'New_qi' column storing the computed values.
@@ -240,14 +242,12 @@ def calculate_qi(stimulus_df, spikes_df, forwhich:list =[0,1,3,4], nspikes_thres
         'sampling_freq': sampling_freq
     }
 
-
-
     for row, idx in zip(spikes_df.itertuples(), range(len(spikes_df))):
 
         stimulus_index = row[0][1]
 
         if stimulus_index not in forwhich:
-            qi_per_cell[idx]=0
+            qi_per_cell[idx] = 0
         else:
             cell_spikes = row[1].compressed()
 
@@ -269,27 +269,28 @@ def calculate_qi(stimulus_df, spikes_df, forwhich:list =[0,1,3,4], nspikes_thres
 
                     qi_per_cell[idx] = fast_qi_exclusive(spikes, stimulus_traits, kernel_width)
                 else:
-                    if fuse=='decompress':
-                        frames=math.ceil(repeat_durations[stimulus_index]*int(sampling_freq))
-                        spiketimes=np.zeros((len(spikes), math.ceil(frames/dsf)))
-                        #print(spiketimes.shape)
+                    if fuse == 'decompress':
+                        frames = math.ceil(repeat_durations[stimulus_index] * int(sampling_freq))
+                        spiketimes = np.zeros((len(spikes), math.ceil(frames / dsf)))
+                        # print(spiketimes.shape)
                         for trial in range(len(spikes)):
-                            #TODO figure out why there are spikes of longer times
-                            if len(spikes[trial])==0:
+                            # TODO figure out why there are spikes of longer times
+                            if len(spikes[trial]) == 0:
                                 continue
                             else:
-                                spikes_hold = spikes[trial][:bisect.bisect_left(spikes[trial],frames)]
-                            # print(list(spikes[trial].astype(int)))
-                            #try:
+                                spikes_hold = spikes[trial][:bisect.bisect_left(spikes[trial], frames)]
+                                # print(list(spikes[trial].astype(int)))
+                                # try:
                                 spiketimes[trial] = decompress_spikes(list(spikes_hold.astype(int)),
-                                                       (repeat_durations[stimulus_index] * sampling_freq),
-                                                       dsf)
-                            #except IndexError:
-                                #print(row, stimulus_index, trial)
-                                #break
+                                                                      (repeat_durations[
+                                                                           stimulus_index] * sampling_freq),
+                                                                      dsf)
+                            # except IndexError:
+                            # print(row, stimulus_index, trial)
+                            # break
 
                         gauswins = np.tile(kernel_template(width=kernel_width / dsf)[::-1],
-                                               (repeats[stimulus_index], 1))
+                                           (repeats[stimulus_index], 1))
                         exs = np.zeros((len(spikes), len(spiketimes[1]) - gauswins.shape[1]))
                         exs = signal.oaconvolve(spiketimes, gauswins, mode='valid', axes=1)
                         qi_per_cell[idx] = calc_tradqi(exs)
@@ -309,8 +310,8 @@ def calculate_qi(stimulus_df, spikes_df, forwhich:list =[0,1,3,4], nspikes_thres
                     print(row[0][0], qi_per_cell[idx])
     spikes_df['New_qi'] = qi_per_cell
 
-
     return spikes_df
+
 
 def QI_parallel(stimulus_df, spikes_df, ):
     """
@@ -332,6 +333,7 @@ class run_multi:
     """
     Class for implementing the multiprocessing(parallelisation) of QI_estimation in Jupyter Notebook.
     """
+
     def __init__(self):
         print("run_multi initialized")
 
@@ -339,7 +341,8 @@ class run_multi:
         return QI_parallel(stimulus_df, spikes_df)
 
 
-def plot_qc_locations_newqi(spikes, savename, invert=False, inverty=False, save=False, ):
+def plot_qc_locations_newqi(spikes, savename, color_col="previously_included", invert=False, inverty=False, save=False,
+                            color_discrete_map=None):
     """
     Title is self-descriptive, function enables to plot cell_locations on chip. Not reliable for distances etc., takes
     the info from the Centres_x and Centres_y levels of the mIndex
@@ -352,15 +355,21 @@ def plot_qc_locations_newqi(spikes, savename, invert=False, inverty=False, save=
 
     TODO: Consider adding arguments for plot colormap or dimensions internally? Of course some can be done post-assignment
     """
-    color_discrete_map = {True: 'rgb(112,112,112)', False: 'rgb(205,92,92)'}
+    if not color_discrete_map:
+        color_discrete_map = {True: 'rgb(112,112,112)', False: 'rgb(205,92,92)'}
+    print('Received', color_discrete_map)
 
     if invert == False:
         qc_locations_plt = px.scatter(
             spikes,
             x="Centres x",
             y="Centres y",
-            color="previously_included",
-            color_discrete_map=color_discrete_map,
+            color=color_col,
+            color_discrete_map={
+                '0': 'red',
+                '1': 'blue',
+                '2': 'green'
+            },
             size='Nr of Spikes',
             hover_data=[
                 "Cell index",
@@ -392,8 +401,9 @@ def plot_qc_locations_newqi(spikes, savename, invert=False, inverty=False, save=
                 spikes_temp,
                 x="Centres y",
                 y="Centres x",
-                color="previously_included",
-                color_discrete_map=color_discrete_map,
+                color=color_col,
+                color_discrete_sequence=list(color_discrete_map.values()),
+                category_orders={color_col: list(color_discrete_map.keys())},
                 hover_data=[
                     "Cell index",
                     "New_qi",
@@ -415,17 +425,28 @@ def plot_qc_locations_newqi(spikes, savename, invert=False, inverty=False, save=
                 height=1000,
                 width=1000,
                 showlegend=False,
-                title_text="Cell locations on Chip - N of cells: %d" %len(spikes),
+                title_text="Cell locations on Chip - N of cells: %d" % len(spikes),
 
             )
 
-
     if save == True:
-        qc_locations_plt.write_image("%s.pdf" % savename, width=1000, height=1000,)
+        qc_locations_plt.write_image("%s.pdf" % savename, width=1000, height=1000, )
     return qc_locations_plt
 
 
-def chip_image(threshold_old, threshold_new, spikes, stim_name, fill_na=True, case='inclusive', save_name='Random', tosave=False):
+def chip_mask_image(spikes, maskname=None, mask=None, color_col='chip_levels', save_name='Random', tosave=False,
+                    colormap=None):
+    """
+    TODO: if spikes df does not contain mask column, make sure to provide it. So arguments "maskname" and "mask are placeholders
+    """
+    spikes[color_col] = spikes[color_col].astype(str)
+    return plot_qc_locations_newqi(spikes.reset_index(), savename=save_name, color_col=color_col,
+                                   invert=True,
+                                   inverty=True, save=tosave, color_discrete_map=colormap)
+
+
+def chip_image(threshold_old, threshold_new, spikes, stim_name, fill_na=True, case='inclusive', save_name='Random',
+               tosave=False):
     """
     threshold_old:int or float to bottom filter "total qc new" column
     threshold_new:int or float to bottom filter "New_qi" column. Greatly unlikely that it will be above 1
@@ -445,9 +466,12 @@ def chip_image(threshold_old, threshold_new, spikes, stim_name, fill_na=True, ca
 
     TODO: Add documentation about what each case is supposed to represent
     """
-    spikes_filtered = spikes.xs(stim_name, level='Stimulus name')
+    try:
+        spikes_filtered = spikes.xs(stim_name, level='Stimulus name')
+    except KeyError:
+        spikes_filtered = spikes[spikes['Stimulus name'] == stim_name]
     if fill_na:
-        spikes_filtered= spikes_filtered.fillna({'New_qi': 0})
+        spikes_filtered = spikes_filtered.fillna({'New_qi': 0})
 
     if case == 'inclusive':
         spikes_thres = spikes_filtered[
@@ -457,11 +481,11 @@ def chip_image(threshold_old, threshold_new, spikes, stim_name, fill_na=True, ca
         spikes_thres = spikes_filtered[
             spikes_filtered['New_qi'] > threshold_new]
         spikes_thres['previously_included'] = (spikes_filtered['total qc new'] > threshold_old) & (
-                    spikes_filtered['New_qi'] > threshold_new)
+                spikes_filtered['New_qi'] > threshold_new)
     elif case == 'end_clean':
         spikes_thres = spikes_filtered[
             spikes_filtered['New_qi'] > threshold_new]
-        spikes_thres['previously_included'] = [True]*len(spikes_thres)
+        spikes_thres['previously_included'] = [True] * len(spikes_thres)
     elif case == 'only_old':
         spikes_thres = spikes_filtered[
             spikes_filtered['total qc new'] > threshold_old]
@@ -469,7 +493,7 @@ def chip_image(threshold_old, threshold_new, spikes, stim_name, fill_na=True, ca
     elif case == 'only_new':
         spikes_thres = spikes_filtered[
             (spikes_filtered['New_qi'] > threshold_new) & (spikes_filtered['total qc new'] < threshold_old)]
-        spikes_thres['previously_included'] =  (spikes_filtered['New_qi'] > threshold_new)
+        spikes_thres['previously_included'] = (spikes_filtered['New_qi'] > threshold_new)
     elif case == 'end_exclusive':
         spikes_thres = spikes_filtered[
             (spikes_filtered['total qc new'] > threshold_old) & (spikes_filtered['New_qi'] < threshold_new)]
@@ -479,7 +503,6 @@ def chip_image(threshold_old, threshold_new, spikes, stim_name, fill_na=True, ca
             (spikes_filtered['total qc new'] > threshold_old) & (spikes_filtered['New_qi'] > threshold_new)]
         spikes_thres['previously_included'] = spikes_thres['total qc new'] > threshold_old
 
-
-
-    return spikes_thres, plot_qc_locations_newqi(spikes_thres.reset_index(), savename=save_name + "" + stim_name, invert=True,
-                                   inverty=True, save=tosave)
+    return spikes_thres, plot_qc_locations_newqi(spikes_thres.reset_index(), savename=save_name + "" + stim_name,
+                                                 invert=True,
+                                                 inverty=True, save=tosave)

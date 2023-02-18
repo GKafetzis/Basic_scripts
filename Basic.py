@@ -22,9 +22,20 @@ def reorder_elements(arr, index, n):
     return temp
 
 
-def stim_col_filter(recording: MEA_analysis.Overview.Dataframe, stim_name: str, col_name: str, thresh: float) -> list:
-    df_filtered = recording.get_stimulus_subset(name=stim_name)[0]
+def create_chip_mask(full_df, arr1, arr2):
+    full_mask = np.full(len(full_df), np.nan)
+    full_mask[np.union1d(arr1, arr2)] = 0
+    full_mask[np.intersect1d(arr1, arr2)] = 1
+    full_mask[np.setdiff1d(arr1, arr2)] = 2
 
+    return full_mask
+
+
+def stim_col_filter(recording, stim_name: str, col_name: str, thresh: float) -> list:
+    if type(recording) == MEA_analysis.Overview.Dataframe:
+        df_filtered = recording.get_stimulus_subset(name=stim_name)[0]
+    else:
+        df_filtered = recording
     idces_filter = list(df_filtered[df_filtered[col_name] > thresh].index.get_level_values(0))
     return idces_filter
 
@@ -382,7 +393,7 @@ def calculate_psth_trace(spikes_df, to_normalise=False, normalising_array=None):
         else:
             try:
                 histogram_arr[cell, :] = histograms[cell] / np.max(histograms[cell]) if not to_normalise else \
-                histograms[cell] / normalising_array[cell]
+                    histograms[cell] / normalising_array[cell]
             except ValueError:
                 extra_bins = np.shape(histograms[cell])[0] - np.shape(histogram_arr)[0]
                 histogram_arr_temp = histograms[cell] / np.max(histograms[cell])

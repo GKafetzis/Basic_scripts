@@ -1,5 +1,6 @@
 import random
 import numpy as np
+import pandas as pd
 
 rng = np.random.default_rng()
 
@@ -132,12 +133,16 @@ def norm_byarea(spikes_per_segment):
     return normed_spikes_per_segment
 
 
+def dominant_direction(arr):
+    return int(np.argmax(arr))
+
+
 def calculate_ds(normed_spikes_per_segment):
     """
     Trick is to tile it once so it becomes circularly symmetric irrespective of index of dominant direction
     """
 
-    dominant_dir = np.argmax(normed_spikes_per_segment)
+    dominant_dir = dominant_direction(normed_spikes_per_segment)
     dummy_array = np.tile(normed_spikes_per_segment, 2)
     dominant_ds = dummy_array[dominant_dir]
     null_ds = dummy_array[dominant_dir + 4]
@@ -152,7 +157,7 @@ def calculate_os(normed_spikes_per_segment):
     Trick is to tile it once so it becomes circularly symmetric irrespective of index of dominant direction
     """
 
-    dominant_dir = np.argmax(normed_spikes_per_segment)
+    dominant_dir = dominant_direction(normed_spikes_per_segment)
     dummy_array = np.tile(normed_spikes_per_segment, 2)
     dominant_ds = dummy_array[dominant_dir]
 
@@ -166,6 +171,25 @@ def calculate_os(normed_spikes_per_segment):
 
 def calculate_dos(normed_spikes_per_segment):
     return calculate_ds(normed_spikes_per_segment), calculate_os(normed_spikes_per_segment)
+
+
+def calculate_cross(normed_spikes_per_segment):
+    """
+    Trick is to tile it once so it becomes circularly symmetric irrespective of index of dominant direction
+    """
+
+    dominant_dir = dominant_direction(normed_spikes_per_segment)
+    dummy_array = np.tile(normed_spikes_per_segment, 2)
+    dominant_ds = dummy_array[dominant_dir]
+
+    dominant_cross = dominant_ds + dummy_array[dominant_dir + 2] + dummy_array[dominant_dir + 4] + dummy_array[
+        dominant_dir + 6]
+    null_cross = dummy_array[dominant_dir + 1] + dummy_array[dominant_dir + 3] + dummy_array[dominant_dir + 5] + \
+                 dummy_array[dominant_dir + 7]
+
+    cross = (dominant_cross - null_cross) / (dominant_cross + null_cross)
+
+    return cross
 
 
 def create_permuted_spikes(single_stimulus, cell_index, df_spikes, df_stimulus, npermut=1000, ):
@@ -249,21 +273,40 @@ def moving_cell(single_stimulus, cell_index, df_spikes, df_stimulus, toreorder=F
         perm_pop = create_permuted_spikes(single_stimulus, cell_index, df_spikes, df_stimulus)
         # print('Signif:', dsi_test(calculate_dos(norm_byarea(spikesperseg))[0], perm_pop))
 
-        if dsi_test(ds, perm_pop):
+        if calculate_cross(norm_byarea(spikesperseg)) > 0.4:
             print(cell_index, ds, os)
-        return None
+        return dominant_direction(norm_byarea(spikesperseg)), ds, dsi_test(ds, perm_pop), os
 
 
 def moving_all(df_spikes, df_stimulus, toreorder=False, re_order=None, ashist=False,
                nr_bins=12, t_thresh=1, sig_thresh=4, quiet_level=0.8):
+    dirs = np.zeros(len(df_spikes))
+    dss = np.zeros(len(df_spikes))
+    dstests = np.full(len(df_spikes), False)
+    oss = np.zeros(len(df_spikes))
+    # cell_idces = np.zeros(len(df_spikes))
     for row, idx in zip(df_spikes.itertuples(), range(len(df_spikes))):
         cell_index = row[0][0]
         single_stimulus = row[0][1]
 
-        moving_cell(single_stimulus, cell_index, df_spikes, df_stimulus, toreorder, re_order, ashist,
-                    nr_bins, t_thresh, sig_thresh, quiet_level)
+        storage = moving_cell(single_stimulus, cell_index, df_spikes, df_stimulus, toreorder, re_order, ashist,
+                              nr_bins, t_thresh, sig_thresh, quiet_level)
+        if storage:
+            dirs[idx], dss[idx], dstests[idx], oss[idx] = storage
+            if (dstests[idx]) and (df_spikes.query("`Stimulus ID`==@single_stimulus and `Cell index`==@cell_index")[
+                                       'New_qi'].values < 0.14):
+                dstests[idx] = False
 
-    return None
+        else:
+            pass
+        # cell_idces[idx] = cell_index
+    df_spikes["DSI_sig"] = dstests
+    df_spikes["DSI"] = dss
+    df_spikes["OSI"] = oss
+    df_spikes["Prefdir"] = dirs
+    # data = np.array([cell_idces, dirs, dss, dstests, oss])
+    # return pd.DataFrame(data=data[1:].T, index=data[0], columns=['dom_dir', 'ds', 'sig', 'os'])
+    return df_spikes
 
 
 ################ Plotting part #########################
