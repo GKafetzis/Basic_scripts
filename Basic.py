@@ -31,11 +31,17 @@ def create_chip_mask(full_df, arr1, arr2):
     return full_mask
 
 
-def stim_col_filter(recording, stim_name: str, col_name: str, thresh: float) -> list:
+def stim_col_filter(recording, stim_name: str, col_name: str, thresh: float, rec_name=None) -> list:
     if type(recording) == MEA_analysis.Overview.Dataframe:
         df_filtered = recording.get_stimulus_subset(name=stim_name)[0]
     else:
-        df_filtered = recording
+        df_filtered = recording[recording['Stimulus name'] == stim_name]
+        if ('Recording' in recording.index.names) and (len(recording.index.get_level_values('Recording').unique()) > 1):
+            if not rec_name:
+                print(
+                    'Running it irrespective of Recording.. Please ensure you provide a rec_name if otherwise intended')
+            else:
+                df_filtered = df_filtered.loc[(slice(None)), (slice(None)), [rec_name]]
     idces_filter = list(df_filtered[df_filtered[col_name] > thresh].index.get_level_values(0))
     return idces_filter
 
