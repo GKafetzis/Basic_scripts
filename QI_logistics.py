@@ -225,7 +225,7 @@ def create_full_logbook(stimulus_df):
     return sampling_freq, trigger_completes, repeat_logics, repeats, repeat_durations
 
 
-def calculate_qi(stimulus_df, spikes_df, forwhich: list = [0, 1, 3, 4], nspikes_thres=30, kernel_width=0.0125,
+def calculate_qi(stimulus_df, spikes_df, forwhich: list = [0, 1, 2, 3, 4, 5, ], nspikes_thres=30, kernel_width=0.0125,
                  fuse='decompress', dsf=200):
     """
     The main function. Given a FULL stimulus_df(i.e. qi to be computed for ALL stimuli), it calculates the QI value with

@@ -508,8 +508,8 @@ def plot_heatmap_adj(spike_df, stimulus_df, stimulus_index: int, mid_dim: int = 
     histogram_fig.update_xaxes(title_text="Time in Seconds", row=3, col=1)
 
     histogram_fig.update_layout({"plot_bgcolor": "rgba(0, 0, 0, 0)"},
-                                height=1080,
-                                width=1980,
+                                height=1000,
+                                width=1280,
                                 showlegend=False)
 
     if save == True:

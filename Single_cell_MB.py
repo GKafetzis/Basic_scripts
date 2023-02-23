@@ -137,6 +137,54 @@ def dominant_direction(arr):
     return int(np.argmax(arr))
 
 
+def get_vector_angle_degrees(normed_spikes_per_segment, dir_degrees, d=0.78539816):
+    return degrees(pycircstat.mean(check_order(dir_degrees)[1], normed_spikes_per_segment, d=d))
+
+
+def plot_polar_histogram(df_spikes, stim_id, default_pop, bins=15, title_name='Sampling Visual Space', weights=False, ):
+    """
+    Currently implemented for single-recs, same as the majority of functions in this package.
+    """
+    if weights:
+        print("Implementation of weighted histograms is still missing")
+        return
+    df_part = df_spikes.loc[default_pop, stim_id, slice(None)].copy()
+    DScells = df_part.index.get_level_values(0)[df_part['DSI_sig']].values
+    nonDScells = df_part.index.get_level_values(0)[~df_part['DSI_sig']].values
+
+    fig = make_subplots(rows=1, cols=2, specs=[[{"type": "polar"}] * 2] * 1,
+                        subplot_titles=("Other RGCs", "DS RGCs"))
+
+    fig.add_trace(go.Barpolar(
+
+        r=np.histogram(df_part.loc[nonDScells, slice(None), (slice(None))]['Prefangle'].values,
+                       bins=bins, range=[0, 360])[0],
+        theta=np.histogram(df_part.loc[nonDScells, slice(None), (slice(None))]['Prefangle'].values,
+                           bins=bins, range=[0, 360])[1][:-1],
+        width=360 / bins,
+        marker=dict(color='lightgray')
+    ), 1, 1)
+
+    fig.add_trace(go.Barpolar(
+        r=np.histogram(df_part.loc[DScells, slice(None), (slice(None))]['Prefangle'].values,
+                       bins=bins, range=[0, 360])[0],
+        theta=np.histogram(df_part.loc[DScells, slice(None), (slice(None))]['Prefangle'].values,
+                           bins=bins, range=[0, 360])[1][:-1],
+        width=360 / bins,
+        marker=dict(color='red')
+    ), 1, 2)
+    fig.update_polars(
+        radialaxis=dict(showticklabels=False, ticks='', tickmode='array', ),
+        angularaxis=dict(showticklabels=False, ticks='')
+    )
+    # tickvals=[0.5, 1, ], range=[0, 1]),
+    fig.update_layout(height=500, width=800,
+                      title_text=f"{title_name} <br> {df_part['Stimulus name'].unique()[0]}", title_x=0.5,
+                      showlegend=False)
+
+    return fig
+
+
 def calculate_ds(normed_spikes_per_segment):
     """
     Trick is to tile it once so it becomes circularly symmetric irrespective of index of dominant direction
@@ -194,23 +242,28 @@ def calculate_cross(normed_spikes_per_segment):
 
 def create_permuted_spikes(single_stimulus, cell_index, df_spikes, df_stimulus, npermut=1000, ):
     cell_spikes, stim_traits = spikes_and_traits(single_stimulus, cell_index, df_spikes, df_stimulus)
-    nspikes_per_trial = np.round(len(cell_spikes) / stim_traits['stim_repeats'], 0).astype(int)
+    nspikes_per_repeat = np.round(len(cell_spikes) / stim_traits['stim_repeats'], 0).astype(int)
     perm_pop = np.zeros([npermut, stim_traits['stim_repeats'], stim_traits['stim_trials']])
 
     for perm in range(npermut):
         for repeat in range(stim_traits['stim_repeats']):
             perm_pop[perm, repeat] = np.bincount(
-                rng.integers(0, stim_traits['stim_trials'], size=nspikes_per_trial),
+                rng.integers(0, stim_traits['stim_trials'], size=nspikes_per_repeat),
                 minlength=stim_traits['stim_trials'])
 
     return perm_pop
 
 
-def dsi_test(cell_dsi, perm_pop, a=0.05):
+def sig_test(selectivity_index, perm_pop, a=0.05, idx='ds'):
     dsi_perm_vals = np.zeros(perm_pop.shape[0])
-    for neuron in range(len(dsi_perm_vals)):
-        dsi_perm_vals[neuron] = calculate_ds(norm_byarea(perm_pop[neuron]))
-    if sum(dsi_perm_vals > cell_dsi) / perm_pop.shape[0] < a:
+    if idx == 'ds':
+        for neuron in range(len(dsi_perm_vals)):
+            dsi_perm_vals[neuron] = calculate_ds(norm_byarea(perm_pop[neuron]))
+    elif idx == 'os':
+        for neuron in range(len(dsi_perm_vals)):
+            dsi_perm_vals[neuron] = calculate_os(norm_byarea(perm_pop[neuron]))
+
+    if sum(dsi_perm_vals > selectivity_index) / perm_pop.shape[0] < a:
         return True
     else:
         return False
@@ -255,47 +308,64 @@ def find_threshold_events(hist_per_dir, t_thresh, sig_thresh):
     return events
 
 
-def moving_cell(single_stimulus, cell_index, df_spikes, df_stimulus, toreorder=False, re_order=None, ashist=False,
-                nr_bins=12, t_thresh=1, sig_thresh=4, quiet_level=0.8):
+def moving_cell(single_stimulus, cell_index, df_spikes, df_stimulus, toreorder=False, dir_degrees=None, ashist=False,
+                nr_bins=12, t_thresh=1, sig_thresh=4, quiet_level=0.8, npermut=1000):
+    if toreorder:
+        re_order = check_order(dir_degrees)[0]
+    else:
+        re_order = None
     spikes_per_dir, spikesperseg, hist_per_dir = spikes_per_seg(single_stimulus, cell_index, df_spikes, df_stimulus,
                                                                 toreorder,
                                                                 re_order, ashist,
                                                                 nr_bins)
     if is_silent(hist_per_dir, t_thresh, sig_thresh):
-        return None
+        return [None] * 6
     elif is_quiet(spikes_per_dir, level=quiet_level):
-        return None
+        return [None] * 6
     else:
         ds, os = calculate_dos(norm_byarea(spikesperseg))
         # print('DSI:', ds)
         # print('OSI:', os)
 
-        perm_pop = create_permuted_spikes(single_stimulus, cell_index, df_spikes, df_stimulus)
+        perm_pop = create_permuted_spikes(single_stimulus, cell_index, df_spikes, df_stimulus, npermut=npermut)
         # print('Signif:', dsi_test(calculate_dos(norm_byarea(spikesperseg))[0], perm_pop))
 
         if calculate_cross(norm_byarea(spikesperseg)) > 0.4:
             print(cell_index, ds, os)
-        return dominant_direction(norm_byarea(spikesperseg)), ds, dsi_test(ds, perm_pop), os
+        return dominant_direction(norm_byarea(spikesperseg)), ds, sig_test(ds, perm_pop, idx='ds'), os, sig_test(os,
+                                                                                                                 perm_pop,
+                                                                                                                 idx='os'), get_vector_angle_degrees(
+            norm_byarea(spikesperseg), dir_degrees)
 
 
-def moving_all(df_spikes, df_stimulus, toreorder=False, re_order=None, ashist=False,
+def moving_all(df_spikes, df_stimulus, toreorder=False, dir_degrees=None, ashist=False,
                nr_bins=12, t_thresh=1, sig_thresh=4, quiet_level=0.8):
     dirs = np.zeros(len(df_spikes))
+    angles = np.zeros(len(df_spikes))
     dss = np.zeros(len(df_spikes))
     dstests = np.full(len(df_spikes), False)
     oss = np.zeros(len(df_spikes))
+    osstests = np.full(len(df_spikes), False)
     # cell_idces = np.zeros(len(df_spikes))
     for row, idx in zip(df_spikes.itertuples(), range(len(df_spikes))):
         cell_index = row[0][0]
         single_stimulus = row[0][1]
 
-        storage = moving_cell(single_stimulus, cell_index, df_spikes, df_stimulus, toreorder, re_order, ashist,
+        storage = moving_cell(single_stimulus, cell_index, df_spikes, df_stimulus, toreorder, dir_degrees, ashist,
                               nr_bins, t_thresh, sig_thresh, quiet_level)
         if storage:
-            dirs[idx], dss[idx], dstests[idx], oss[idx] = storage
-            if (dstests[idx]) and (df_spikes.query("`Stimulus ID`==@single_stimulus and `Cell index`==@cell_index")[
-                                       'New_qi'].values < 0.14):
-                dstests[idx] = False
+            dirs[idx], dss[idx], dstests[idx], oss[idx], osstests[idx], angles[idx] = storage
+            for index, test in enumerate([dstests, osstests]):
+
+                if (test[idx]) and ('New_qi' in df_spikes.columns):
+                    sel_index = [dss, oss][index]
+                    """The presence of 0-comparison rules out unwanted Falsifications when Qi is not
+                    computed for a stimulus but is computed for others"""
+                    if 0 < df_spikes.loc[row[0]]['New_qi'] < 0.14:
+                        test[idx] = False
+                    elif sel_index[idx] < 0.3:
+                        test[idx] = False
+
 
         else:
             pass
@@ -303,7 +373,9 @@ def moving_all(df_spikes, df_stimulus, toreorder=False, re_order=None, ashist=Fa
     df_spikes["DSI_sig"] = dstests
     df_spikes["DSI"] = dss
     df_spikes["OSI"] = oss
+    df_spikes["OSI_sig"] = osstests
     df_spikes["Prefdir"] = dirs
+    df_spikes["Prefangle"] = angles
     # data = np.array([cell_idces, dirs, dss, dstests, oss])
     # return pd.DataFrame(data=data[1:].T, index=data[0], columns=['dom_dir', 'ds', 'sig', 'os'])
     return df_spikes
@@ -404,7 +476,7 @@ def plot_ds_overview_cell(single_stimulus, cell_index, df_spikes, df_stimulus, d
     fig_ds_spiketrains.show()
     fig_polar_ds.show()
 
-    return fig_polar_ds, fig_ds_spiketrains
+    return fig_ds_spiketrains, fig_polar_ds,
 
 
 class Peak:
