@@ -71,8 +71,9 @@ def spikes_and_traits(single_stimulus, cell_index, df_spikes, df_stimulus, ):
 
     return cell_spikes, stim_traits
 
+def
 
-def spikes_per_seg(single_stimulus, cell_index, df_spikes, df_stimulus, toreorder=False, re_order=None, ashist=False,
+def nspikes_per_seg(single_stimulus, cell_index, df_spikes, df_stimulus, toreorder=False, re_order=None, ashist=False,
                    nr_bins=12):
     """
     cell_index: value of 'Cell index'
@@ -314,7 +315,7 @@ def moving_cell(single_stimulus, cell_index, df_spikes, df_stimulus, toreorder=F
         re_order = check_order(dir_degrees)[0]
     else:
         re_order = None
-    spikes_per_dir, spikesperseg, hist_per_dir = spikes_per_seg(single_stimulus, cell_index, df_spikes, df_stimulus,
+    spikes_per_dir, spikesperseg, hist_per_dir = nspikes_per_seg(single_stimulus, cell_index, df_spikes, df_stimulus,
                                                                 toreorder,
                                                                 re_order, ashist,
                                                                 nr_bins)

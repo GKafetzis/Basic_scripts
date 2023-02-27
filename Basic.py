@@ -23,10 +23,11 @@ def reorder_elements(arr, index, n):
 
 
 def create_chip_mask(full_df, arr1, arr2):
+    start = full_df.index.get_level_values(0)[0]
     full_mask = np.full(len(full_df), np.nan)
-    full_mask[np.union1d(arr1, arr2)] = 0
-    full_mask[np.intersect1d(arr1, arr2)] = 1
-    full_mask[np.setdiff1d(arr1, arr2)] = 2
+    full_mask[np.union1d(arr1, arr2) - start] = 0
+    full_mask[np.intersect1d(arr1, arr2) - start] = 1
+    full_mask[np.setdiff1d(arr1, arr2) - start] = 2
 
     return full_mask
 

@@ -408,7 +408,6 @@ def plot_qc_locations_newqi(spikes, savename, color_col="previously_included", i
                     "Cell index",
                     "New_qi",
                     "Nr of Spikes",
-                    "total qc new"
                 ],
             )
             qc_locations_plt.update_traces(
