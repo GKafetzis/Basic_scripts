@@ -46,6 +46,16 @@ def stim_col_filter(recording, stim_name: str, col_name: str, thresh: float, rec
     return idces_filter
 
 
+def get_vals(spikes_df, cell_idx, stim_idces, col_val, ):
+    if col_val == 'Spikes':
+        len_spikes = [len(spikes_df.loc[[cell_idx], stim_idces, (slice(None))][col_val].values[i].compressed()) for i in
+                      range(len(stim_idces))]
+
+        return len_spikes
+    else:
+        return spikes_df.loc[[cell_idx], stim_idces, (slice(None))][col_val].values
+
+
 def prepare_dataframes_bystring(recording: MEA_analysis.Overview.Dataframe, bystring: str) -> pd.core.frame.DataFrame:
     dataframe_stimulus = recording.stimulus_df.loc[
         [idx for idx, val in enumerate(recording.stimulus_df['Stimulus_name'].values) if bystring in val]]
