@@ -22,6 +22,10 @@ def reorder_elements(arr, index, n):
     return temp
 
 
+def flatten_list(list_in):
+    return [val for sublist in list_in for val in sublist]
+
+
 def create_chip_mask(full_df, arr1, arr2):
     start = full_df.index.get_level_values(0)[0]
     full_mask = np.full(len(full_df), np.nan)
