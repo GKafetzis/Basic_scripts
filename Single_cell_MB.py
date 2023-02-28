@@ -1,6 +1,7 @@
 import random
 import numpy as np
 import pandas as pd
+import bisect
 
 rng = np.random.default_rng()
 
@@ -70,6 +71,55 @@ def spikes_and_traits(single_stimulus, cell_index, df_spikes, df_stimulus, ):
         stim_traits = Basic.get_stimulus_traits(df_stimulus, stim_idx)
 
     return cell_spikes, stim_traits
+
+
+def spikes_per_seg(single_stimulus, cell_index, df_spikes, df_stimulus, inrange=None, return_traits=False):
+    cell_spikes, stim_traits = spikes_and_traits(single_stimulus, cell_index, df_spikes, df_stimulus)
+
+    spikes_container = []
+    if inrange:
+        for trial in range(inrange[0], inrange[1]):
+            spikes_container.append([int(val) for sublist in (sas.get_spikes_per_trigger_type_new(
+                cell_spikes, stim_traits['stim_rel_trig'],
+                trial, stim_traits['stim_trials'])[0]) for val in sublist])
+    else:
+        for trial in range(stim_traits['stim_trials']):
+            spikes_container.append([int(val) for sublist in (sas.get_spikes_per_trigger_type_new(
+                cell_spikes, stim_traits['stim_rel_trig'],
+                trial, stim_traits['stim_trials'])[0]) for val in sublist])
+    if return_traits:
+        return spikes_container, stim_traits
+    else:
+        return spikes_container
+
+
+def calc_pol(spikes_container, thresh):
+    spikes_container = np.array(np.sort(Basic.flatten_list(spikes_container)))
+    all_spikes = len(spikes_container)
+    ON_spikes = bisect.bisect_left(spikes_container, thresh)
+    OFF_spikes = all_spikes - ON_spikes
+    try:
+        polarity_index = (ON_spikes - OFF_spikes) / (ON_spikes + OFF_spikes)
+    except ZeroDivisionError:
+        polarity_index = np.nan
+    return polarity_index
+
+
+def pol_all(single_stimulus, cell_idces, df_spikes, df_stimulus, inrange=None, thresh=None):
+    polarities = np.zeros(len(cell_idces))
+    if thresh:
+        for idx, cell_idx in enumerate(cell_idces):
+            spikes_container, stim_traits = spikes_per_seg(single_stimulus, cell_idx, df_spikes, df_stimulus,
+                                                           inrange=inrange, return_traits=True)
+            polarities[idx] = calc_pol(spikes_container, thresh=thresh)
+    else:
+        print('Threshold was not given, calculating it internally for stimuli with sublogic=2')
+        for idx, cell_idx in enumerate(cell_idces):
+            spikes_container, stim_traits = spikes_per_seg(single_stimulus, cell_idx, df_spikes, df_stimulus,
+                                                           inrange=inrange, return_traits=True)
+            polarities[idx] = calc_pol(spikes_container,
+                                       thresh=stim_traits['sampling_freq'] * stim_traits['stim_phase_dur'] / 2)
+    return polarities
 
 
 def nspikes_per_seg(single_stimulus, cell_index, df_spikes, df_stimulus, toreorder=False, re_order=None, ashist=False,
@@ -361,12 +411,10 @@ def moving_all(df_spikes, df_stimulus, toreorder=False, dir_degrees=None, ashist
                     sel_index = [dss, oss][index]
                     """The presence of 0-comparison rules out unwanted Falsifications when Qi is not
                     computed for a stimulus but is computed for others"""
-                    if 0 < df_spikes.loc[row[0]]['New_qi'] < 0.14:
+                    if ('New_qi' in df_spikes.columns) and (0 < df_spikes.loc[row[0]]['New_qi'] < 0.14):
                         test[idx] = False
                     elif sel_index[idx] < 0.3:
                         test[idx] = False
-
-
         else:
             pass
         # cell_idces[idx] = cell_index
@@ -466,8 +514,8 @@ def plot_polar_ds(spikes_per_segment, dir_degrees):
 
 
 def plot_ds_overview_cell(single_stimulus, cell_index, df_spikes, df_stimulus, dir_degrees, toreorder=False, ):
-    spikes_per_segment = spikes_per_seg(single_stimulus, cell_index, df_spikes, df_stimulus, toreorder=True,
-                                        re_order=check_order(dir_degrees)[0])[1]
+    spikes_per_segment = nspikes_per_seg(single_stimulus, cell_index, df_spikes, df_stimulus, toreorder=True,
+                                         re_order=check_order(dir_degrees)[0])[1]
     fig_polar_ds = plot_polar_ds(spikes_per_segment, dir_degrees)
 
     fig_ds_spiketrains = plot_ds_spiketrains(single_stimulus, cell_index, df_spikes, df_stimulus, toreorder,
