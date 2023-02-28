@@ -93,6 +93,10 @@ def spikes_per_seg(single_stimulus, cell_index, df_spikes, df_stimulus, inrange=
         return spikes_container
 
 
+def place_holder():
+    return
+
+
 def calc_pol(spikes_container, thresh):
     spikes_container = np.array(np.sort(Basic.flatten_list(spikes_container)))
     all_spikes = len(spikes_container)
