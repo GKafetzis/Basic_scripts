@@ -71,10 +71,6 @@ def prepare_dataframes_bystring(recording: MEA_analysis.Overview.Dataframe, byst
     return dataframe_spikes, dataframe_stimulus
 
 
-def please():
-    return None
-
-
 def prepare_dataframes(recording: MEA_analysis.Overview.Dataframe, stimuli_indices: list,
                        cell_indices: list == True) -> pd.core.frame.DataFrame:
     dataframe_stimulus = recording.stimulus_df.loc[stimuli_indices]
