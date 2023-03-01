@@ -93,10 +93,6 @@ def spikes_per_seg(single_stimulus, cell_index, df_spikes, df_stimulus, inrange=
         return spikes_container
 
 
-def place_holder():
-    return
-
-
 def calc_pol(spikes_container, thresh):
     spikes_container = np.array(np.sort(Basic.flatten_list(spikes_container)))
     all_spikes = len(spikes_container)
@@ -393,41 +389,46 @@ def moving_cell(single_stimulus, cell_index, df_spikes, df_stimulus, toreorder=F
 
 
 def moving_all(df_spikes, df_stimulus, toreorder=False, dir_degrees=None, ashist=False,
-               nr_bins=12, t_thresh=1, sig_thresh=4, quiet_level=0.8):
-    dirs = np.zeros(len(df_spikes))
-    angles = np.zeros(len(df_spikes))
-    dss = np.zeros(len(df_spikes))
-    dstests = np.full(len(df_spikes), False)
-    oss = np.zeros(len(df_spikes))
-    osstests = np.full(len(df_spikes), False)
+               nr_bins=12, t_thresh=1, sig_thresh=4, quiet_level=0.8, stim_snip='MB'):
+    df_temp = df_spikes.loc[df_spikes['Stimulus name'].str.contains(stim_snip)]
+    dirs = np.zeros(len(df_temp))
+    angles = np.zeros(len(df_temp))
+    dss = np.zeros(len(df_temp))
+    dstests = np.full(len(df_temp), False)
+    oss = np.zeros(len(df_temp))
+    osstests = np.full(len(df_temp), False)
     # cell_idces = np.zeros(len(df_spikes))
-    for row, idx in zip(df_spikes.itertuples(), range(len(df_spikes))):
+    for row, idx in zip(df_temp.itertuples(), range(len(df_temp))):
+
         cell_index = row[0][0]
         single_stimulus = row[0][1]
 
-        storage = moving_cell(single_stimulus, cell_index, df_spikes, df_stimulus, toreorder, dir_degrees, ashist,
+        storage = moving_cell(single_stimulus, cell_index, df_temp, df_stimulus, toreorder, dir_degrees, ashist,
                               nr_bins, t_thresh, sig_thresh, quiet_level)
         if storage:
             dirs[idx], dss[idx], dstests[idx], oss[idx], osstests[idx], angles[idx] = storage
             for index, test in enumerate([dstests, osstests]):
 
-                if (test[idx]) and ('New_qi' in df_spikes.columns):
+                if (test[idx]) and ('New_qi' in df_temp.columns):
                     sel_index = [dss, oss][index]
                     """The presence of 0-comparison rules out unwanted Falsifications when Qi is not
                     computed for a stimulus but is computed for others"""
-                    if ('New_qi' in df_spikes.columns) and (0 < df_spikes.loc[row[0]]['New_qi'] < 0.14):
+                    if ('New_qi' in df_temp.columns) and (0 < df_temp.loc[row[0]]['New_qi'] < 0.14):
                         test[idx] = False
                     elif sel_index[idx] < 0.3:
                         test[idx] = False
         else:
             pass
         # cell_idces[idx] = cell_index
-    df_spikes["DSI_sig"] = dstests
-    df_spikes["DSI"] = dss
-    df_spikes["OSI"] = oss
-    df_spikes["OSI_sig"] = osstests
-    df_spikes["Prefdir"] = dirs
-    df_spikes["Prefangle"] = angles
+    df_temp["DSI_sig"] = dstests
+    df_temp["DSI"] = dss
+    df_temp["OSI"] = oss
+    df_temp["OSI_sig"] = osstests
+    df_temp["Prefdir"] = dirs
+    df_temp["Prefangle"] = angles
+    df_spikes = pd.concat([df_spikes, df_temp], 1, ignore_index=False)
+    df_spikes = df_spikes.loc[:, ~df_spikes.columns.duplicated()].copy()
+
     # data = np.array([cell_idces, dirs, dss, dstests, oss])
     # return pd.DataFrame(data=data[1:].T, index=data[0], columns=['dom_dir', 'ds', 'sig', 'os'])
     return df_spikes
